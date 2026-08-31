@@ -1,0 +1,16 @@
+services:
+  notifier:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      # Only on loopback: put a reverse proxy with TLS in front, because the
+      # shared secret and the API token travel in plain headers.
+      - '127.0.0.1:3000:3000'
+    volumes:
+      # The event history and the outbox queue live here. Losing this volume
+      # loses the calls that were still pending.
+      - notifier-data:/app/data
+
+volumes:
+  notifier-data:

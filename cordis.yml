@@ -1,0 +1,74 @@
+# The application: every row is a plugin, and this list is the composition.
+# Rows are addressed as config:<id> by the CLI and the UI. See README.md, because
+# a mutation from the CLI or the UI rewrites this file and drops comments.
+
+- id: logger
+  name: '@deepseek-ai/cordis-plugin-logger-console'
+- id: timer
+  name: '@deepseek-ai/cordis-plugin-timer'
+- id: hmr
+  name: '@deepseek-ai/cordis-plugin-hmr'
+  disabled: !!js process.env.NODE_ENV === 'production'
+  config:
+    root:
+      - ./src
+- id: server
+  name: ./src/plugins/server-node.ts
+  config:
+    host: !!js process.env.HOST ?? '127.0.0.1'
+    port: !!js Number(process.env.PORT ?? 3000)
+- id: healthz
+  name: ./src/plugins/healthz.ts
+- id: hooks
+  name: ./src/plugins/hooks.ts
+- id: ingest-http
+  name: ./src/plugins/ingest-http.ts
+- id: store
+  name: ./src/plugins/store-sqlite.ts
+  config:
+    path: !!js process.env.NOTIFIER_DB ?? './data/notifier.db'
+    retentionDays: 30
+- id: outbox
+  name: ./src/plugins/outbox.ts
+  config:
+    attempts: 8
+    baseDelayMs: 30000
+    maxDelayMs: 3600000
+- id: api
+  name: ./src/plugins/api.ts
+  config:
+    secret: !!js process.env.NOTIFIER_SECRET
+- id: ui
+  name: ./src/plugins/ui.ts
+- id: auth
+  name: ./src/plugins/auth-secret.ts
+  config:
+    secret: !!js process.env.NOTIFIER_SECRET
+- id: rate-limit
+  name: ./src/plugins/rate-limit.ts
+  config:
+    perChannel: 20
+    windowMs: 60000
+- id: retry
+  name: ./src/plugins/retry.ts
+  config:
+    attempts: 3
+    baseDelayMs: 500
+    maxDelayMs: 8000
+- id: console
+  name: ./src/plugins/channel-console.ts
+- id: telegram
+  name: ./src/plugins/channel-telegram.ts
+  disabled: !!js (!process.env.TELEGRAM_TOKEN)
+  config:
+    token: !!js process.env.TELEGRAM_TOKEN
+    chatId: !!js process.env.TELEGRAM_CHAT_ID
+- id: ntfy
+  name: ./src/plugins/channel-ntfy.ts
+  disabled: !!js (!process.env.NTFY_TOPIC)
+  config:
+    server: !!js process.env.NTFY_SERVER ?? 'https://ntfy.sh'
+    topic: !!js process.env.NTFY_TOPIC
+    token: !!js process.env.NTFY_TOKEN ?? ''
+    match:
+      minLevel: warning

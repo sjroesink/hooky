@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notifier</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fbfbfa; --panel: #fff; --line: #e4e4e2; --text: #1c1c1a; --dim: #6b6b66;
+    --sent: #1a7f4b; --failed: #b4232a; --skipped: #8a6d1f; --pending: #2b5f9e;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16161a; --panel: #1e1e23; --line: #32323a; --text: #e8e8e4; --dim: #9a9a94;
+      --sent: #5ec98a; --failed: #f0757c; --skipped: #d9b451; --pending: #74a9ea;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 system-ui, -apple-system, Segoe UI, sans-serif;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+    padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel);
+    position: sticky; top: 0; z-index: 5;
+  }
+  h1 { font-size: 15px; margin: 0; letter-spacing: .02em; }
+  nav { display: flex; gap: 4px; }
+  nav button, .btn {
+    font: inherit; color: inherit; background: transparent; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px;
+  }
+  nav button[aria-current="true"] { background: var(--text); color: var(--panel); border-color: var(--text); }
+  .grow { flex: 1; }
+  .stats { display: flex; gap: 14px; color: var(--dim); font-size: 12px; flex-wrap: wrap; }
+  .stats b { color: var(--text); font-weight: 600; }
+  main { padding: 16px 20px 40px; }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  input, select {
+    font: inherit; color: inherit; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px;
+  }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); font-weight: 600; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
+  td.mono, .mono { font-family: var(--mono); font-size: 12px; }
+  .tag {
+    display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 999px;
+    border: 1px solid currentColor; margin-right: 4px; white-space: nowrap;
+  }
+  .sent { color: var(--sent); } .failed { color: var(--failed); }
+  .skipped { color: var(--skipped); } .pending { color: var(--pending); }
+  .empty { padding: 28px; text-align: center; color: var(--dim); }
+  dialog {
+    border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text);
+    max-width: min(760px, 92vw); width: 100%; padding: 0;
+  }
+  dialog::backdrop { background: rgb(0 0 0 / .45); }
+  .dlg-head { display: flex; gap: 12px; align-items: baseline; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  .dlg-body { padding: 14px 18px; max-height: 62vh; overflow: auto; }
+  .dlg-foot { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); }
+  pre { background: color-mix(in srgb, var(--text) 6%, transparent); padding: 10px; border-radius: 6px; overflow: auto; font-family: var(--mono); font-size: 12px; margin: 6px 0 14px; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0 0 14px; }
+  dt { color: var(--dim); font-size: 12px; }
+  .row-actions { display: flex; gap: 6px; }
+  .note { color: var(--dim); font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Notifier</h1>
+  <nav>
+    <button data-tab="calls" aria-current="true">Calls</button>
+    <button data-tab="plugins">Plugins</button>
+  </nav>
+  <span class="grow"></span>
+  <div class="stats" id="stats"></div>
+  <button class="btn" id="token-btn" title="Wijzig het API-token">token</button>
+</header>
+
+<main>
+  <section id="tab-calls">
+    <div class="filters">
+      <input id="f-search" placeholder="zoek in titel of body" size="22">
+      <input id="f-hook" placeholder="hook" size="12">
+      <select id="f-level">
+        <option value="">elk level</option>
+      </select>
+      <select id="f-outcome">
+        <option value="">elke uitkomst</option>
+        <option value="delivered">delivered</option>
+        <option value="partial">partial</option>
+        <option value="failed">failed</option>
+      </select>
+      <select id="f-state">
+        <option value="">alle</option>
+        <option value="pending">alleen pending</option>
+        <option value="done">alleen afgerond</option>
+      </select>
+      <select id="f-since">
+        <option value="">alle tijd</option>
+        <option value="1h">laatste uur</option>
+        <option value="24h">laatste dag</option>
+        <option value="7d">laatste week</option>
+      </select>
+      <button class="btn" id="refresh">verversen</button>
+      <label class="note"><input type="checkbox" id="auto" checked> auto</label>
+    </div>
+    <table>
+      <thead><tr><th>tijd</th><th>hook</th><th>level</th><th>titel</th><th>kanalen</th><th>status</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="empty" id="empty" hidden>Nog geen calls.</div>
+    <div class="filters" style="margin-top:12px">
+      <button class="btn" id="prev">vorige</button>
+      <span class="note" id="page"></span>
+      <button class="btn" id="next">volgende</button>
+    </div>
+  </section>
+
+  <section id="tab-plugins" hidden>
+    <table>
+      <thead><tr><th>id</th><th>plugin</th><th>state</th><th>config</th><th></th></tr></thead>
+      <tbody id="plugin-rows"></tbody>
+    </table>
+    <p class="note">Aan- of uitzetten schrijft direct naar cordis.yml en de loader mount of unmount de plugin meteen.</p>
+  </section>
+</main>
+
+<dialog id="detail">
+  <div class="dlg-head"><strong id="d-title"></strong><span class="grow"></span><span class="mono" id="d-id"></span></div>
+  <div class="dlg-body" id="d-body"></div>
+  <div class="dlg-foot">
+    <button class="btn" id="d-replay">replay</button>
+    <span class="grow"></span>
+    <button class="btn" id="d-close">sluiten</button>
+  </div>
+</dialog>
+
+<script>
+const API = '__API_PREFIX__'
+const LEVELS = ['debug', 'info', 'warning', 'error', 'critical']
+const state = { tab: 'calls', offset: 0, limit: 50, total: 0, current: null }
+
+for (const level of LEVELS) {
+  const option = document.createElement('option')
+  option.value = option.textContent = level
+  document.getElementById('f-level').append(option)
+}
+
+function token() {
+  let value = localStorage.getItem('notifier.token')
+  if (!value) {
+    value = prompt('API-token (NOTIFIER_SECRET):') || ''
+    if (value) localStorage.setItem('notifier.token', value)
+  }
+  return value
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(API + path, {
+    ...options,
+    headers: { authorization: 'Bearer ' + token(), 'content-type': 'application/json', ...options.headers },
+  })
+  if (response.status === 401) {
+    localStorage.removeItem('notifier.token')
+    throw new Error('token afgewezen')
+  }
+  if (!response.ok) throw new Error((await response.text()).slice(0, 200))
+  return response.json()
+}
+
+const fmt = (at) => new Date(at).toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'medium' })
+
+function statusOf(event) {
+  if (event.state === 'pending') {
+    const when = event.nextAttemptAt ? ', volgende poging ' + fmt(event.nextAttemptAt) : ''
+    return '<span class="tag pending">pending (' + event.attempts + ')' + when + '</span>'
+  }
+  return '<span class="tag ' + (event.outcome === 'delivered' ? 'sent' : event.outcome === 'partial' ? 'skipped' : 'failed') + '">' + event.outcome + '</span>'
+}
+
+function channelsOf(event) {
+  if (!event.deliveries.length) return '<span class="note">nog niets</span>'
+  return event.deliveries
+    .map((d) => '<span class="tag ' + d.status + '">' + d.channel + '</span>')
+    .join('')
+}
+
+const escape = (value) => String(value ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])
+
+async function loadStats() {
+  const stats = await api('/stats')
+  document.getElementById('stats').innerHTML =
+    '<span><b>' + stats.events + '</b> calls</span>' +
+    '<span><b>' + stats.pending + '</b> pending</span>' +
+    Object.entries(stats.outcomes).map(([key, n]) => '<span>' + key + ' <b>' + n + '</b></span>').join('') +
+    '<span>kanalen <b>' + (stats.channels_registered.join(', ') || 'geen') + '</b></span>'
+}
+
+async function loadCalls() {
+  const params = new URLSearchParams({ limit: state.limit, offset: state.offset })
+  for (const [key, id] of [['search', 'f-search'], ['hook', 'f-hook'], ['level', 'f-level'], ['outcome', 'f-outcome'], ['state', 'f-state'], ['since', 'f-since']]) {
+    const value = document.getElementById(id).value.trim()
+    if (value) params.set(key, value)
+  }
+  const data = await api('/events?' + params)
+  state.total = data.total
+  const rows = document.getElementById('rows')
+  rows.innerHTML = data.events
+    .map((event) =>
+      '<tr data-id="' + event.id + '">' +
+      '<td class="mono">' + fmt(event.receivedAt) + '</td>' +
+      '<td>' + escape(event.hook) + '</td>' +
+      '<td>' + escape(event.level) + '</td>' +
+      '<td>' + escape(event.title) + (event.replayOf ? ' <span class="tag">replay</span>' : '') + '</td>' +
+      '<td>' + channelsOf(event) + '</td>' +
+      '<td>' + statusOf(event) + '</td>' +
+      '</tr>',
+    )
+    .join('')
+  document.getElementById('empty').hidden = data.events.length > 0
+  document.getElementById('page').textContent =
+    data.total === 0 ? '' : state.offset + 1 + ' tot ' + Math.min(state.offset + state.limit, data.total) + ' van ' + data.total
+}
+
+async function loadPlugins() {
+  const data = await api('/plugins')
+  document.getElementById('plugin-rows').innerHTML = data.plugins
+    .map((plugin) =>
+      '<tr>' +
+      '<td class="mono">' + escape(plugin.id) + '</td>' +
+      '<td class="mono">' + escape(plugin.name) + '</td>' +
+      '<td><span class="tag ' + (plugin.state === 'active' ? 'sent' : plugin.state === 'failed' ? 'failed' : 'skipped') + '">' + plugin.state + '</span>' +
+      (plugin.disabled ? '<span class="tag">disabled</span>' : '') + '</td>' +
+      '<td class="mono">' + escape(JSON.stringify(plugin.config)).slice(0, 90) + '</td>' +
+      '<td class="row-actions"><button class="btn" data-toggle="' + escape(plugin.id) + '" data-disabled="' + plugin.disabled + '">' +
+      (plugin.disabled ? 'aanzetten' : 'uitzetten') + '</button></td>' +
+      '</tr>',
+    )
+    .join('')
+}
+
+async function refresh() {
+  try {
+    await loadStats()
+    if (state.tab === 'calls') await loadCalls()
+    else await loadPlugins()
+  } catch (error) {
+    document.getElementById('stats').textContent = String(error.message)
+  }
+}
+
+document.querySelectorAll('nav button').forEach((button) => {
+  button.addEventListener('click', () => {
+    state.tab = button.dataset.tab
+    document.querySelectorAll('nav button').forEach((other) => other.setAttribute('aria-current', String(other === button)))
+    document.getElementById('tab-calls').hidden = state.tab !== 'calls'
+    document.getElementById('tab-plugins').hidden = state.tab !== 'plugins'
+    void refresh()
+  })
+})
+
+document.getElementById('rows').addEventListener('click', async (event) => {
+  const row = event.target.closest('tr[data-id]')
+  if (!row) return
+  const detail = await api('/events/' + row.dataset.id)
+  state.current = detail.id
+  document.getElementById('d-title').textContent = detail.title
+  document.getElementById('d-id').textContent = detail.id
+  document.getElementById('d-body').innerHTML =
+    '<dl>' +
+    '<dt>hook</dt><dd>' + escape(detail.hook) + '</dd>' +
+    '<dt>ontvangen</dt><dd>' + fmt(detail.receivedAt) + '</dd>' +
+    '<dt>level</dt><dd>' + escape(detail.level) + '</dd>' +
+    '<dt>status</dt><dd>' + statusOf(detail) + '</dd>' +
+    (detail.url ? '<dt>url</dt><dd><a href="' + escape(detail.url) + '">' + escape(detail.url) + '</a></dd>' : '') +
+    (detail.tags.length ? '<dt>tags</dt><dd>' + detail.tags.map((t) => '<span class="tag">' + escape(t) + '</span>').join('') + '</dd>' : '') +
+    (detail.replayOf ? '<dt>replay van</dt><dd class="mono">' + escape(detail.replayOf) + '</dd>' : '') +
+    '</dl>' +
+    (detail.body ? '<div class="note">body</div><pre>' + escape(detail.body) + '</pre>' : '') +
+    '<div class="note">afleveringen</div><pre>' + escape(JSON.stringify(detail.deliveries, null, 2)) + '</pre>' +
+    '<div class="note">payload</div><pre>' + escape(JSON.stringify(detail.payload, null, 2)) + '</pre>'
+  document.getElementById('detail').showModal()
+})
+
+document.getElementById('plugin-rows').addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-toggle]')
+  if (!button) return
+  const disabled = button.dataset.disabled === 'true'
+  await api('/plugins/' + button.dataset.toggle, {
+    method: 'PATCH',
+    body: JSON.stringify({ disabled: !disabled }),
+  })
+  await refresh()
+})
+
+document.getElementById('d-replay').addEventListener('click', async () => {
+  await api('/events/' + state.current + '/replay', { method: 'POST' })
+  document.getElementById('detail').close()
+  await refresh()
+})
+document.getElementById('d-close').addEventListener('click', () => document.getElementById('detail').close())
+document.getElementById('refresh').addEventListener('click', () => void refresh())
+document.getElementById('token-btn').addEventListener('click', () => {
+  localStorage.removeItem('notifier.token')
+  token()
+  void refresh()
+})
+document.getElementById('prev').addEventListener('click', () => {
+  state.offset = Math.max(0, state.offset - state.limit)
+  void loadCalls()
+})
+document.getElementById('next').addEventListener('click', () => {
+  if (state.offset + state.limit < state.total) state.offset += state.limit
+  void loadCalls()
+})
+for (const id of ['f-search', 'f-hook', 'f-level', 'f-outcome', 'f-state', 'f-since']) {
+  document.getElementById(id).addEventListener('change', () => {
+    state.offset = 0
+    void loadCalls()
+  })
+}
+
+setInterval(() => {
+  if (document.getElementById('auto').checked && !document.getElementById('detail').open) void refresh()
+}, 5000)
+void refresh()
+</script>
+</body>
+</html>
