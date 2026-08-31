@@ -18,20 +18,25 @@ export const Config: Schema<Partial<Config>, Config> = Schema.object({
 })
 
 /**
- * One HTML file with inline CSS and JS, so there is no bundler and no second
- * dev server. It reads the page from disk on load, which means an edit plus the
- * HMR reload of this plugin is enough to see the change.
+ * One HTML file with inline CSS and JS, so there is no bundler and no second dev
+ * server. HMR watches modules, and index.html is not one, so outside production
+ * the file is read per request: edit, refresh, done. In production it is read
+ * once at load.
  */
 export function apply(ctx: Context, config: Config): void {
-  const here = dirname(fileURLToPath(import.meta.url))
-  const html = readFileSync(join(here, '..', 'ui', 'index.html'), 'utf8').replace(
-    '__API_PREFIX__',
-    config.apiPrefix.replace(/\/+$/, ''),
-  )
+  const file = join(dirname(fileURLToPath(import.meta.url)), '..', 'ui', 'index.html')
+  const prefix = config.apiPrefix.replace(/\/+$/, '')
+  const cached = process.env['NODE_ENV'] === 'production' ? read() : undefined
+
+  function read(): string {
+    // replaceAll, not replace: the placeholder appears in the page copy and again
+    // in the script that has to know where to fetch.
+    return readFileSync(file, 'utf8').replaceAll('__API_PREFIX__', prefix)
+  }
 
   ctx.server.route('GET', config.path, () => ({
     status: 200,
-    body: html,
+    body: cached ?? read(),
     headers: { 'content-type': 'text/html; charset=utf-8' },
   }))
 }

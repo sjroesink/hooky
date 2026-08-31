@@ -32,7 +32,7 @@ async function settled(ctx: Context, id: string, want: 'pending' | 'done', tries
   throw new Error(`event ${id} never reached ${want}`)
 }
 
-test('submit levert meteen een id op en de outbox bezorgt daarna', async (t) => {
+test('submit answers with an id right away and the outbox delivers after', async (t) => {
   const ctx = await durable(t)
   const seen: Message[] = []
   await ctx.inject(['notify'], (child) => {
@@ -45,7 +45,7 @@ test('submit levert meteen een id op en de outbox bezorgt daarna', async (t) => 
   })
   await ctx.plugin(outboxPlugin, { pollMs: 60_000 })
 
-  const submitted = await ctx.hooks.submit(event({ title: 'komt goed' }))
+  const submitted = await ctx.hooks.submit(event({ title: 'will be fine' }))
   assert.equal(submitted.queued, true)
 
   const row = await settled(ctx, submitted.id, 'done')
@@ -58,13 +58,13 @@ test('submit levert meteen een id op en de outbox bezorgt daarna', async (t) => 
   assert.equal(seen.length, 1)
 })
 
-test('een falend kanaal houdt het event pending met een volgende poging', async (t) => {
+test('a failing channel keeps the event pending with a next attempt', async (t) => {
   const ctx = await durable(t)
   await ctx.inject(['notify'], (child) => {
     child.notify.register({
-      name: 'stuk',
+      name: 'broken',
       async send() {
-        throw new Error('kanaal ligt plat')
+        throw new Error('channel is down')
       },
     })
   })
@@ -75,7 +75,7 @@ test('een falend kanaal houdt het event pending met een volgende poging', async 
 
   assert.equal(row.outcome, null)
   assert.equal(row.attempts, 1)
-  assert.ok(row.nextAttemptAt! > Date.now(), 'volgende poging moet in de toekomst staan')
+  assert.ok(row.nextAttemptAt! > Date.now(), 'the next attempt must be in the future')
   assert.equal(row.deliveries[0]!.status, 'failed')
 
   // Not due yet, so a sweep leaves it alone.
@@ -83,22 +83,22 @@ test('een falend kanaal houdt het event pending met een volgende poging', async 
   assert.equal((await ctx.store.due(row.nextAttemptAt!, 10)).length, 1)
 })
 
-test('een volgende poging slaat de kanalen over die al geleverd hebben', async (t) => {
+test('a later pass skips the channels that already took it', async (t) => {
   const ctx = await durable(t)
   let goodCalls = 0
   let badCalls = 0
   await ctx.inject(['notify'], (child) => {
     child.notify.register({
-      name: 'goed',
+      name: 'good',
       async send() {
         goodCalls++
       },
     })
     child.notify.register({
-      name: 'stuk',
+      name: 'broken',
       async send() {
         badCalls++
-        throw new Error('nog niet')
+        throw new Error('not yet')
       },
     })
   })
@@ -109,20 +109,21 @@ test('een volgende poging slaat de kanalen over die al geleverd hebben', async (
   const row = await settled(ctx, submitted.id, 'done')
 
   assert.equal(row.attempts, 5)
-  assert.equal(row.outcome, 'partial', 'een kanaal nam het aan, het andere nooit')
-  assert.equal(goodCalls, 1, 'het gelukte kanaal krijgt het maar een keer')
-  assert.equal(badCalls, 5, 'het falende kanaal krijgt elke poging opnieuw')
-  assert.deepEqual(await ctx.store.sentChannels(submitted.id), ['goed'])
+  assert.equal(row.outcome, 'partial', 'one channel took it, the other never did')
+  assert.equal(goodCalls, 1, 'the channel that succeeded gets it once')
+  assert.equal(badCalls, 5, 'the failing channel gets every pass')
+  assert.deepEqual(await ctx.store.sentChannels(submitted.id), ['good'])
   assert.deepEqual(
     row.deliveries.map((delivery) => [delivery.channel, delivery.status]),
     [
-      ['goed', 'sent'],
-      ['stuk', 'failed'],
+      // ORDER BY channel, so 'broken' comes before 'good'.
+      ['broken', 'failed'],
+      ['good', 'sent'],
     ],
   )
 })
 
-test('zonder outbox levert de kern binnen het request af', async (t) => {
+test('without an outbox the core delivers inside the request', async (t) => {
   const ctx = await durable(t)
   await ctx.inject(['notify'], (child) => {
     child.notify.register({ name: 'stub', async send() {} })
@@ -135,10 +136,10 @@ test('zonder outbox levert de kern binnen het request af', async (t) => {
   assert.equal(await ctx.store.get(submitted.id), undefined)
 })
 
-test('de store filtert op hook, level en kanaal', async (t) => {
+test('the store filters on hook, level and channel', async (t) => {
   const ctx = await durable(t)
-  await ctx.store.append(event({ hook: 'deploy', level: 'info', title: 'een' }))
-  const warned = event({ hook: 'alert', level: 'warning', title: 'twee' })
+  await ctx.store.append(event({ hook: 'deploy', level: 'info', title: 'one' }))
+  const warned = event({ hook: 'alert', level: 'warning', title: 'two' })
   await ctx.store.append(warned)
   await ctx.store.recordAttempt(warned.id, [{ channel: 'ntfy', status: 'sent', attempts: 1 }], {
     state: 'done',
@@ -151,7 +152,7 @@ test('de store filtert op hook, level en kanaal', async (t) => {
   assert.equal((await ctx.store.list({ limit: 10, offset: 0, hook: 'deploy' })).total, 1)
   assert.equal((await ctx.store.list({ limit: 10, offset: 0, level: 'warning' })).total, 1)
   assert.equal((await ctx.store.list({ limit: 10, offset: 0, channel: 'ntfy' })).total, 1)
-  assert.equal((await ctx.store.list({ limit: 10, offset: 0, search: 'twee' })).total, 1)
+  assert.equal((await ctx.store.list({ limit: 10, offset: 0, search: 'two' })).total, 1)
   assert.equal((await ctx.store.list({ limit: 10, offset: 0, state: 'pending' })).total, 1)
 
   const stats = await ctx.store.stats()

@@ -12,7 +12,7 @@ import * as outboxPlugin from '../src/plugins/outbox.ts'
 import * as serverPlugin from '../src/plugins/server-node.ts'
 import * as storePlugin from '../src/plugins/store-sqlite.ts'
 
-const SECRET = 'test-geheim'
+const SECRET = 'test-secret'
 
 /** The whole stack on a free port, minus the loader and the real channels. */
 async function stack(t: TestContext, options: { api?: boolean } = {}) {
@@ -51,28 +51,28 @@ async function waitFor<T>(probe: () => Promise<T | undefined>, tries = 60): Prom
   throw new Error('condition never held')
 }
 
-test('een geldige webhook levert 202 en komt bij het kanaal aan', async (t) => {
+test('a valid webhook answers 202 and reaches the channel', async (t) => {
   const { base, seen } = await stack(t)
   const response = await fetch(`${base}/hooks/deploy`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-notifier-secret': SECRET },
-    body: JSON.stringify({ title: 'klaar', message: 'build 7', level: 'warning', tags: ['ota'] }),
+    headers: { 'content-type': 'application/json', 'x-hooky-secret': SECRET },
+    body: JSON.stringify({ title: 'done', message: 'build 7', level: 'warning', tags: ['ota'] }),
   })
   assert.equal(response.status, 202)
   const body = (await response.json()) as { id: string; queued: boolean }
   assert.equal(body.queued, true)
 
   const message = await waitFor(async () => seen[0])
-  assert.equal(message.title, 'klaar')
+  assert.equal(message.title, 'done')
   assert.equal(message.body, 'build 7')
   assert.equal(message.level, 'warning')
   assert.deepEqual(message.tags, ['ota'])
   assert.equal(message.event.hook, 'deploy')
 })
 
-test('een fout of ontbrekend secret geeft 401 en levert niets af', async (t) => {
+test('a wrong or missing secret answers 401 and delivers nothing', async (t) => {
   const { base, seen } = await stack(t)
-  const attempts: Record<string, string>[] = [{ 'x-notifier-secret': 'mis' }, {}]
+  const attempts: Record<string, string>[] = [{ 'x-hooky-secret': 'mis' }, {}]
   for (const headers of attempts) {
     const response = await fetch(`${base}/hooks/deploy`, {
       method: 'POST',
@@ -85,11 +85,11 @@ test('een fout of ontbrekend secret geeft 401 en levert niets af', async (t) => 
   assert.equal(seen.length, 0)
 })
 
-test('stukke JSON geeft 400, een onbekende route 404', async (t) => {
+test('broken JSON answers 400, an unknown route 404', async (t) => {
   const { base } = await stack(t)
   const broken = await fetch(`${base}/hooks/deploy`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-notifier-secret': SECRET },
+    headers: { 'content-type': 'application/json', 'x-hooky-secret': SECRET },
     body: '{oeps',
   })
   assert.equal(broken.status, 400)
@@ -99,7 +99,7 @@ test('stukke JSON geeft 400, een onbekende route 404', async (t) => {
   assert.equal((await fetch(`${base}/healthz`)).status, 200)
 })
 
-test('een te grote body geeft 413', async (t) => {
+test('a body over the limit answers 413', async (t) => {
   const ctx = new Context()
   t.after(() => ctx.fiber.dispose())
   await ctx.plugin(serverPlugin, { host: '127.0.0.1', port: 0, maxBodyBytes: 16 })
@@ -111,14 +111,14 @@ test('een te grote body geeft 413', async (t) => {
   assert.equal(response.status, 413)
 })
 
-test('de api leest de historie terug en replayt een call', async (t) => {
+test('the api reads the history back and replays a call', async (t) => {
   const { base, seen } = await stack(t, { api: true })
   const auth = { authorization: `Bearer ${SECRET}` }
 
   await fetch(`${base}/hooks/alert`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-notifier-secret': SECRET },
-    body: JSON.stringify({ title: 'origineel', level: 'error' }),
+    headers: { 'content-type': 'application/json', 'x-hooky-secret': SECRET },
+    body: JSON.stringify({ title: 'original', level: 'error' }),
   })
 
   const listed = await waitFor(async () => {
@@ -129,7 +129,7 @@ test('de api leest de historie terug en replayt een call', async (t) => {
     return data.events[0]?.outcome === 'delivered' ? data : undefined
   })
   assert.equal(listed.total, 1)
-  assert.equal(listed.events[0]!.title, 'origineel')
+  assert.equal(listed.events[0]!.title, 'original')
 
   const original = listed.events[0]!.id
   const replay = await fetch(`${base}/api/events/${original}/replay`, { method: 'POST', headers: auth })
@@ -155,7 +155,7 @@ test('de api leest de historie terug en replayt een call', async (t) => {
   assert.ok(described.endpoints.length > 5)
 })
 
-test('de api weigert zonder token', async (t) => {
+test('the api refuses without a token', async (t) => {
   const { base } = await stack(t, { api: true })
   assert.equal((await fetch(`${base}/api/events`)).status, 401)
   assert.equal((await fetch(`${base}/api/stats`, { headers: { authorization: 'Bearer fout' } })).status, 401)

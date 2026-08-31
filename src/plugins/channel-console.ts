@@ -17,7 +17,7 @@ export const Config: Schema<Partial<Config>, Config> = Schema.object({
 })
 
 export function apply(ctx: Context, config: Config): void {
-  const logger = ctx.logger('notifier')
+  const logger = ctx.logger('hooky')
 
   ctx.notify.register({
     name: config.channel,

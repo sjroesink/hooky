@@ -33,6 +33,8 @@ export interface EventQuery {
 export interface StoreStats {
   events: number
   pending: number
+  /** Distinct hook names, for the filter dropdown. */
+  hooks: string[]
   outcomes: Record<string, number>
   channels: Record<string, Record<string, number>>
   oldest: number | null

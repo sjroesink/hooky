@@ -12,7 +12,7 @@ import { event } from './helpers.ts'
  * everything it registered, without the core keeping a list of who did what.
  */
 
-test('een kanaal verdwijnt met zijn plugin', async () => {
+test('a channel leaves with its plugin', async () => {
   const ctx = new Context()
   await ctx.plugin(hooksPlugin)
 
@@ -27,7 +27,7 @@ test('een kanaal verdwijnt met zijn plugin', async () => {
   await ctx.fiber.dispose()
 })
 
-test('de poort is vrij na unload, en de route is weg', async () => {
+test('the port is free after unload, and the route is gone', async () => {
   const ctx = new Context()
   const fiber = await ctx.plugin(serverPlugin, { host: '127.0.0.1', port: 0 })
   const { port } = ctx.server.address
@@ -44,17 +44,17 @@ test('de poort is vrij na unload, en de route is weg', async () => {
   await ctx.fiber.dispose()
 })
 
-test('twee fibers van hetzelfde plugin zijn twee kanalen', async () => {
+test('two fibers of one plugin are two channels', async () => {
   const ctx = new Context()
   await ctx.plugin(hooksPlugin)
-  await ctx.plugin(consoleChannel, { channel: 'alles' })
-  await ctx.plugin(consoleChannel, { channel: 'kritiek', match: { minLevel: 'critical' } })
+  await ctx.plugin(consoleChannel, { channel: 'all' })
+  await ctx.plugin(consoleChannel, { channel: 'critical-only', match: { minLevel: 'critical' } })
 
-  assert.deepEqual(ctx.notify.names, ['alles', 'kritiek'])
+  assert.deepEqual(ctx.notify.names, ['all', 'critical-only'])
   const results = await ctx.hooks.dispatch(event({ level: 'info' }))
   assert.deepEqual(
     results.map((result) => result.channel),
-    ['alles'],
+    ['all'],
   )
   await ctx.fiber.dispose()
 })

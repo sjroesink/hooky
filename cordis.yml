@@ -1,7 +1,3 @@
-# The application: every row is a plugin, and this list is the composition.
-# Rows are addressed as config:<id> by the CLI and the UI. See README.md, because
-# a mutation from the CLI or the UI rewrites this file and drops comments.
-
 - id: logger
   name: '@deepseek-ai/cordis-plugin-logger-console'
 - id: timer
@@ -26,7 +22,7 @@
 - id: store
   name: ./src/plugins/store-sqlite.ts
   config:
-    path: !!js process.env.NOTIFIER_DB ?? './data/notifier.db'
+    path: !!js process.env.HOOKY_DB ?? './data/hooky.db'
     retentionDays: 30
 - id: outbox
   name: ./src/plugins/outbox.ts
@@ -37,13 +33,13 @@
 - id: api
   name: ./src/plugins/api.ts
   config:
-    secret: !!js process.env.NOTIFIER_SECRET
+    secret: !!js process.env.HOOKY_SECRET
 - id: ui
   name: ./src/plugins/ui.ts
 - id: auth
   name: ./src/plugins/auth-secret.ts
   config:
-    secret: !!js process.env.NOTIFIER_SECRET
+    secret: !!js process.env.HOOKY_SECRET
 - id: rate-limit
   name: ./src/plugins/rate-limit.ts
   config:

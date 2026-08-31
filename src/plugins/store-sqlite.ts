@@ -21,7 +21,7 @@ export interface Config {
 }
 
 export const Config: Schema<Partial<Config>, Config> = Schema.object({
-  path: Schema.string().default('./data/notifier.db').description('Database file; ":memory:" for tests.'),
+  path: Schema.string().default('./data/hooky.db').description('Database file; ":memory:" for tests.'),
   retentionDays: Schema.natural()
     .default(30)
     .description('Prune settled events older than this; 0 keeps everything.'),
@@ -240,6 +240,12 @@ class SqliteStore extends Service implements StoreService {
       outcomes[row.key] = row.n
     }
 
+    const hooks = (
+      this.db.prepare('SELECT DISTINCT hook FROM events ORDER BY hook').all() as unknown as {
+        hook: string
+      }[]
+    ).map((row) => row.hook)
+
     const channels: Record<string, Record<string, number>> = {}
     const channelRows = this.db
       .prepare('SELECT channel, status, COUNT(*) AS n FROM deliveries GROUP BY channel, status')
@@ -252,6 +258,7 @@ class SqliteStore extends Service implements StoreService {
     return {
       events: totals.events,
       pending: totals.pending ?? 0,
+      hooks,
       outcomes,
       channels,
       oldest: totals.oldest,

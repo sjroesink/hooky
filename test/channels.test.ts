@@ -7,19 +7,19 @@ import { format } from '../src/plugins/channel-telegram.ts'
 import * as hooksPlugin from '../src/plugins/hooks.ts'
 import { captureFetch, event } from './helpers.ts'
 
-test('telegram stuurt HTML met chat_id en escapet de tekst', async () => {
+test('telegram sends HTML with chat_id and escapes the text', async () => {
   const { calls, restore } = captureFetch()
   try {
     const ctx = new Context()
     await ctx.plugin(hooksPlugin)
-    await ctx.plugin(telegramChannel, { token: 'GEHEIM', chatId: '-100123' })
+    await ctx.plugin(telegramChannel, { token: 'SECRET', chatId: '-100123' })
 
     const results = await ctx.hooks.dispatch(
       event({ title: 'a < b & c', body: '<script>', level: 'error', url: 'https://x.test/a b' }),
     )
     assert.equal(results[0]!.status, 'sent')
     assert.equal(calls.length, 1)
-    assert.equal(calls[0]!.url, 'https://api.telegram.org/botGEHEIM/sendMessage')
+    assert.equal(calls[0]!.url, 'https://api.telegram.org/botSECRET/sendMessage')
 
     const body = JSON.parse(String(calls[0]!.init.body))
     assert.equal(body.chat_id, '-100123')
@@ -34,7 +34,7 @@ test('telegram stuurt HTML met chat_id en escapet de tekst', async () => {
   }
 })
 
-test('telegram zet disable_notification onder silentBelow', async () => {
+test('telegram sets disable_notification below silentBelow', async () => {
   const { calls, restore } = captureFetch()
   try {
     const ctx = new Context()
@@ -55,19 +55,19 @@ test('telegram zet disable_notification onder silentBelow', async () => {
   }
 })
 
-test('ntfy publiceert als JSON met de juiste priority', async () => {
+test('ntfy publishes as JSON with the right priority', async () => {
   const { calls, restore } = captureFetch()
   try {
     const ctx = new Context()
     await ctx.plugin(hooksPlugin)
     await ctx.plugin(ntfyChannel, {
-      topic: 'mijn-topic',
+      topic: 'my-topic',
       token: 'tk_1',
-      tags: ['notifier'],
+      tags: ['hooky'],
       server: 'https://ntfy.example/',
     })
 
-    await ctx.hooks.dispatch(event({ level: 'critical', title: 'plat', tags: ['prod'], url: 'https://x.test' }))
+    await ctx.hooks.dispatch(event({ level: 'critical', title: 'down', tags: ['prod'], url: 'https://x.test' }))
     assert.equal(calls[0]!.url, 'https://ntfy.example/')
 
     const headers = calls[0]!.init.headers as Record<string, string>
@@ -76,11 +76,11 @@ test('ntfy publiceert als JSON met de juiste priority', async () => {
 
     const body = JSON.parse(String(calls[0]!.init.body))
     assert.deepEqual(body, {
-      topic: 'mijn-topic',
-      title: 'plat',
-      message: 'plat',
+      topic: 'my-topic',
+      title: 'down',
+      message: 'down',
       priority: 5,
-      tags: ['notifier', 'prod'],
+      tags: ['hooky', 'prod'],
       markdown: true,
       click: 'https://x.test',
     })
@@ -90,7 +90,7 @@ test('ntfy publiceert als JSON met de juiste priority', async () => {
   }
 })
 
-test('een non-2xx wordt een failed result met de statuscode erin', async () => {
+test('a non-2xx becomes a failed result carrying the status code', async () => {
   const { restore } = captureFetch(() => new Response('chat not found', { status: 400 }))
   try {
     const ctx = new Context()
@@ -108,14 +108,14 @@ test('een non-2xx wordt een failed result met de statuscode erin', async () => {
   }
 })
 
-test('format zet titel, body, tags en link onder elkaar', () => {
+test('format stacks title, body, tags and link', () => {
   const text = format({
-    title: 'kop',
-    body: 'regel',
+    title: 'heading',
+    body: 'line',
     level: 'info',
     tags: ['a', 'b'],
     url: 'https://x.test/pad',
     event: event(),
   })
-  assert.equal(text, '<b>kop</b>\nregel\n<i>a, b</i>\n<a href="https://x.test/pad">https://x.test/pad</a>')
+  assert.equal(text, '<b>heading</b>\nline\n<i>a, b</i>\n<a href="https://x.test/pad">https://x.test/pad</a>')
 })

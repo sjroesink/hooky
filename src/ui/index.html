@@ -1,337 +1,1164 @@
 <!doctype html>
-<html lang="nl">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Notifier</title>
+<title>Hooky</title>
 <style>
+  /* Colour carries delivery status and nothing else. Level stays grey except
+     error and critical. Four status colours, fixed. */
   :root {
     color-scheme: light dark;
-    --bg: #fbfbfa; --panel: #fff; --line: #e4e4e2; --text: #1c1c1a; --dim: #6b6b66;
-    --sent: #1a7f4b; --failed: #b4232a; --skipped: #8a6d1f; --pending: #2b5f9e;
+    --bg:#f6f6f7; --panel:#ffffff; --panel2:#fafafa; --line:#e4e4e7; --line2:#d4d4d8;
+    --fg:#18181b; --fg2:#52525b; --fg3:#8c8c94; --sel:#eef2f7; --code:#f7f7f8;
+    --sent:#1f7a4d; --sent-bg:#e8f3ec; --failed:#b3261e; --failed-bg:#fbeceb;
+    --pending:#8a5a00; --pending-bg:#fbf2e2; --chip-bg:#f0f0f1;
+    --link:#1f5fa8;
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #16161a; --panel: #1e1e23; --line: #32323a; --text: #e8e8e4; --dim: #9a9a94;
-      --sent: #5ec98a; --failed: #f0757c; --skipped: #d9b451; --pending: #74a9ea;
+      --bg:#101012; --panel:#17171a; --panel2:#1c1c20; --line:#26262b; --line2:#34343a;
+      --fg:#e7e7ea; --fg2:#a1a1aa; --fg3:#74747d; --sel:#1f2530; --code:#131316;
+      --sent:#58c08a; --sent-bg:#12291d; --failed:#f08076; --failed-bg:#2c1614;
+      --pending:#d8a94a; --pending-bg:#2a2013; --chip-bg:#232329;
+      --link:#7fb2ee;
     }
   }
+
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font: 14px/1.5 system-ui, -apple-system, Segoe UI, sans-serif;
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 13px/1.5 var(--sans);
+    display: flex; flex-direction: column;
+    overflow: hidden;                 /* frames scroll, the page never does */
   }
-  header {
-    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
-    padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel);
-    position: sticky; top: 0; z-index: 5;
-  }
-  h1 { font-size: 15px; margin: 0; letter-spacing: .02em; }
-  nav { display: flex; gap: 4px; }
-  nav button, .btn {
-    font: inherit; color: inherit; background: transparent; cursor: pointer;
-    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px;
-  }
-  nav button[aria-current="true"] { background: var(--text); color: var(--panel); border-color: var(--text); }
-  .grow { flex: 1; }
-  .stats { display: flex; gap: 14px; color: var(--dim); font-size: 12px; flex-wrap: wrap; }
-  .stats b { color: var(--text); font-weight: 600; }
-  main { padding: 16px 20px 40px; }
-  .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-  input, select {
+  a { color: var(--link); text-decoration: underline; text-underline-offset: 2px; }
+
+  button, input, select {
     font: inherit; color: inherit; background: var(--panel);
-    border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px;
+    border: 1px solid var(--line2); border-radius: 0; padding: 0 9px; height: 28px;
   }
-  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); font-weight: 600; }
-  tbody tr:last-child td { border-bottom: none; }
-  tbody tr { cursor: pointer; }
-  tbody tr:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
-  td.mono, .mono { font-family: var(--mono); font-size: 12px; }
-  .tag {
-    display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 999px;
-    border: 1px solid currentColor; margin-right: 4px; white-space: nowrap;
+  button { cursor: pointer; }
+  button:hover { border-color: var(--fg3); }
+  .mono { font-family: var(--mono); }
+  .link {
+    background: none; border: none; height: auto; padding: 0; color: var(--fg3);
+    font-family: var(--mono); font-size: 11px;
+    text-decoration: underline; text-underline-offset: 3px;
   }
-  .sent { color: var(--sent); } .failed { color: var(--failed); }
-  .skipped { color: var(--skipped); } .pending { color: var(--pending); }
-  .empty { padding: 28px; text-align: center; color: var(--dim); }
-  dialog {
-    border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text);
-    max-width: min(760px, 92vw); width: 100%; padding: 0;
+  .link:hover { color: var(--fg); border: none; }
+  .primary { background: var(--fg); color: var(--panel); border-color: var(--fg); font: 600 12px/1 var(--mono); }
+  .primary:hover { opacity: .88; border-color: var(--fg); }
+  .danger { background: var(--failed); color: #fff; border-color: var(--failed); font: 600 12px/1 var(--mono); }
+
+  /* ---------- header ---------- */
+  header {
+    flex: none; display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; padding: 0 16px; height: 48px;
+    background: var(--panel); border-bottom: 1px solid var(--line);
   }
-  dialog::backdrop { background: rgb(0 0 0 / .45); }
-  .dlg-head { display: flex; gap: 12px; align-items: baseline; padding: 14px 18px; border-bottom: 1px solid var(--line); }
-  .dlg-body { padding: 14px 18px; max-height: 62vh; overflow: auto; }
-  .dlg-foot { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); }
-  pre { background: color-mix(in srgb, var(--text) 6%, transparent); padding: 10px; border-radius: 6px; overflow: auto; font-family: var(--mono); font-size: 12px; margin: 6px 0 14px; }
-  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0 0 14px; }
-  dt { color: var(--dim); font-size: 12px; }
-  .row-actions { display: flex; gap: 6px; }
-  .note { color: var(--dim); font-size: 12px; }
+  .brand { display: flex; align-items: center; gap: 24px; min-width: 0; }
+  .wordmark { font: 600 13px/1 var(--mono); letter-spacing: .04em; }
+  .tabs { display: flex; gap: 2px; }
+  .tabs button {
+    background: none; border: none; border-bottom: 2px solid transparent;
+    height: 32px; padding: 6px 10px; font-size: 13px; color: var(--fg3);
+  }
+  .tabs button[aria-current="true"] { color: var(--fg); font-weight: 560; border-bottom-color: var(--fg); }
+  .tabs button:hover { color: var(--fg); border-bottom-color: var(--line2); }
+  .tabs button[aria-current="true"]:hover { border-bottom-color: var(--fg); }
+  .counters {
+    display: flex; align-items: center; gap: 14px;
+    font: 11px/1 var(--mono); color: var(--fg3); flex-wrap: wrap; justify-content: flex-end;
+  }
+  .counters .sep { width: 1px; height: 14px; background: var(--line2); }
+  .counters .pending { color: var(--pending); }
+  .counters .failed { color: var(--failed); }
+
+  /* ---------- filters ---------- */
+  .filters {
+    flex: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 10px 16px; background: var(--panel2); border-bottom: 1px solid var(--line);
+  }
+  .filters input[type="search"] { width: 268px; font: 12px/1 var(--mono); }
+  .filters select { font-size: 12px; }
+  .check { display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 9px;
+           background: var(--panel); border: 1px solid var(--line2); font-size: 12px; cursor: pointer; }
+  .check input { height: 12px; width: 12px; padding: 0; margin: 0; }
+  .segmented { display: flex; height: 28px; border: 1px solid var(--line2); }
+  .segmented button {
+    border: none; border-left: 1px solid var(--line2); height: 100%; padding: 0 10px;
+    font: 12px/1 var(--mono);
+  }
+  .segmented button:first-child { border-left: none; }
+  .segmented button[aria-pressed="true"] { background: var(--fg); color: var(--panel); }
+  .filters .spacer { margin-left: auto; }
+  .chipfilters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .chipfilter {
+    display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px;
+    background: var(--panel); border: 1px solid var(--fg2); font: 12px/1 var(--mono);
+  }
+  .chipfilter button { border: none; background: none; height: auto; padding: 0; color: var(--fg3); }
+
+  /* ---------- calls: list plus detail ---------- */
+  main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .split { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr; }
+  .split[data-detail="true"] { grid-template-columns: 1fr 560px; }
+  .listwrap { min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+  .split[data-detail="true"] .listwrap { border-right: 1px solid var(--line2); }
+
+  .rows { flex: 1; min-height: 0; overflow: auto; }
+  .grid {
+    display: grid; gap: 12px; align-items: center;
+    grid-template-columns: 150px 92px 80px minmax(0, 1fr) 226px 104px;
+  }
+  .listwrap[data-narrow="true"] .grid {
+    gap: 10px; grid-template-columns: 96px 76px minmax(0, 1fr) 118px;
+  }
+  .head {
+    flex: none; padding: 7px 16px; background: var(--panel2);
+    border-bottom: 1px solid var(--line2);
+    font: 600 10px/1 var(--mono); letter-spacing: .09em; color: var(--fg3);
+  }
+  .head .right { text-align: right; }
+  .row {
+    width: 100%; text-align: left; background: var(--panel);
+    border: none; border-bottom: 1px solid var(--line); border-left: 2px solid transparent;
+    padding: 9px 16px; height: auto; cursor: pointer; font: inherit; color: inherit;
+  }
+  .listwrap[data-narrow="true"] .row { padding: 9px 14px; }
+  .row:hover { background: var(--sel); border-color: var(--line); border-left-color: var(--line2); }
+  .row[aria-selected="true"] { background: var(--sel); border-left-color: var(--fg); }
+  .cell-time { font: 11px/1.3 var(--mono); color: var(--fg2); }
+  .cell-hook { font: 12px/1.3 var(--mono); }
+  .cell-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .cell-title span.t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cell-out { text-align: right; font: 600 10px/1 var(--mono); letter-spacing: .07em; }
+
+  .level { font: 600 10px/1 var(--mono); letter-spacing: .06em; padding: 3px 5px; justify-self: start; }
+  .level-debug, .level-info, .level-warning { color: var(--fg2); }
+  .level-debug { color: var(--fg3); }
+  .level-error { color: var(--failed); }
+  .level-critical { color: #fff; background: var(--failed); }
+
+  .replay-tag {
+    flex: none; font: 600 9px/1 var(--mono); letter-spacing: .08em;
+    color: var(--fg2); border: 1px solid var(--line2); padding: 3px 4px;
+  }
+  .chips { display: flex; gap: 5px; flex-wrap: wrap; }
+  .chip {
+    display: flex; align-items: center; gap: 5px; padding: 3px 6px;
+    font: 11px/1 var(--mono); border: 1px solid var(--chip-bg); background: var(--chip-bg); color: var(--fg2);
+  }
+  .chip .dot, .dot { width: 6px; height: 6px; flex: none; background: var(--fg3); }
+  .chip-sent { background: var(--sent-bg); border-color: var(--sent-bg); color: var(--sent); }
+  .chip-sent .dot { background: var(--sent); }
+  .chip-failed { background: var(--failed-bg); border-color: var(--failed); color: var(--failed); }
+  .chip-failed .dot { background: var(--failed); }
+  .chip-skipped .dot { background: var(--fg3); }
+  .dots { display: flex; gap: 4px; justify-content: flex-end; align-items: center; }
+  .dots .dot { width: 9px; height: 9px; }
+  .dots .out { font: 600 9px/1 var(--mono); letter-spacing: .06em; margin-left: 4px; }
+
+  .pager {
+    flex: none; display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; background: var(--panel2); border-top: 1px solid var(--line);
+  }
+  .pager .count { font: 11px/1 var(--mono); color: var(--fg3); }
+  .pager .buttons { display: flex; gap: 6px; }
+  .pager button { font: 12px/1 var(--mono); }
+  .pager button:disabled { color: var(--fg3); cursor: default; }
+
+  /* ---------- detail panel ---------- */
+  .detail { min-width: 0; display: flex; flex-direction: column; background: var(--panel); }
+  .detail-head {
+    flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 0 14px; height: 48px; background: var(--panel2); border-bottom: 1px solid var(--line);
+  }
+  .detail-head .id { font: 11px/1 var(--mono); color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .detail-head .actions { display: flex; gap: 8px; flex: none; }
+  .detail-body { flex: 1; min-height: 0; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+
+  .banner {
+    display: flex; align-items: center; gap: 10px; padding: 9px 11px;
+    font: 12px/1.4 var(--mono); border-left: 2px solid;
+  }
+  .banner-pending { background: var(--pending-bg); border-left-color: var(--pending); color: var(--pending); }
+  .banner-failed { background: var(--failed-bg); border-left-color: var(--failed); color: var(--failed); }
+  .banner-sent { background: var(--sent-bg); border-left-color: var(--sent); color: var(--sent); }
+
+  .detail h2 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+  .detail .body-text { font-size: 13px; color: var(--fg2); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .fields {
+    display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 6px 12px;
+    font: 12px/1.5 var(--mono); padding-top: 8px; border-top: 1px solid var(--line); margin: 0;
+  }
+  .fields dt { color: var(--fg3); }
+  .fields dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .caption {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px;
+    font: 600 10px/1 var(--mono); letter-spacing: .09em; color: var(--fg3);
+  }
+  .deliveries { border: 1px solid var(--line); display: flex; flex-direction: column; }
+  .delivery { border-bottom: 1px solid var(--line); }
+  .delivery:last-child { border-bottom: none; }
+  .delivery.is-failed { background: var(--failed-bg); }
+  .delivery-line {
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px; font: 12px/1 var(--mono);
+  }
+  .delivery-line .dot { width: 7px; height: 7px; }
+  .delivery-line .name { width: 78px; overflow: hidden; text-overflow: ellipsis; }
+  .delivery-line .tries { margin-left: auto; color: var(--fg3); }
+  .delivery .note {
+    margin: 0 10px 9px; padding: 7px 9px; background: var(--panel); border: 1px solid var(--line2);
+    font: 11px/1.5 var(--mono); overflow-wrap: anywhere; max-height: 96px; overflow: auto;
+  }
+  .delivery.is-failed .note { color: var(--failed); border-color: var(--failed); }
+  .delivery.is-skipped .note { background: var(--panel2); border-color: var(--line); color: var(--fg2); }
+  .status-sent { color: var(--sent); }
+  .status-failed { color: var(--failed); }
+  .status-skipped { color: var(--fg3); }
+
+  pre {
+    margin: 0; padding: 10px; background: var(--code); border: 1px solid var(--line);
+    font: 11px/1.55 var(--mono); color: var(--fg2); overflow: auto; max-height: 210px;
+  }
+  pre[data-wrap="false"] { white-space: pre; }
+  pre[data-wrap="true"] { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .toggle { border: 1px solid var(--line2); padding: 2px 5px; margin-left: 4px; }
+
+  /* ---------- empty states and token ---------- */
+  .empty { padding: 44px 32px 48px; display: flex; flex-direction: column; gap: 12px; }
+  .empty h2 { font-size: 15px; font-weight: 600; margin: 0; }
+  .empty p { margin: 0; font-size: 13px; color: var(--fg2); line-height: 1.55; max-width: 460px; }
+  .empty .suggestions { display: flex; gap: 8px; margin-top: 4px; }
+  .empty .suggestions button { font: 12px/1 var(--mono); }
+  .token-wrap { flex: 1; min-height: 0; overflow: auto; padding: 56px 32px 64px; display: flex; justify-content: center; }
+  .token-card { width: 404px; max-width: 100%; background: var(--panel); border: 1px solid var(--line2); padding: 20px; height: fit-content; }
+  .token-card h2 { font-size: 15px; font-weight: 600; margin: 0; }
+  .token-card p { font-size: 13px; color: var(--fg2); line-height: 1.55; margin: 8px 0 0; }
+  .token-card input { width: 100%; margin-top: 16px; height: 32px; font: 12px/1 var(--mono); background: var(--bg); }
+  .token-card input[data-rejected="true"] { border-color: var(--failed); }
+  .token-error { display: flex; align-items: center; gap: 7px; margin-top: 8px; font: 11px/1.5 var(--mono); color: var(--failed); }
+  .token-error .dot { background: var(--failed); }
+  .token-actions { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+  .token-actions .hint { font: 11px/1.5 var(--mono); color: var(--fg3); }
+
+  /* ---------- plugins ---------- */
+  .plugins .grid { grid-template-columns: 172px minmax(0, 1fr) 96px minmax(0, 1fr) 132px; gap: 14px; }
+  .plugin { background: var(--panel); border-bottom: 1px solid var(--line); }
+  .plugin > .grid { padding: 11px 16px; font: 12px/1.4 var(--mono); }
+  .plugin .module { color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .plugin .config {
+    color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    background: none; border: none; height: auto; padding: 0; text-align: left; cursor: pointer;
+  }
+  .plugin .config:hover { color: var(--fg); border: none; }
+  .plugin .state-active { color: var(--sent); }
+  .plugin .state-pending { color: var(--pending); }
+  .plugin .state-failed { color: var(--failed); font-weight: 600; }
+  .plugin .state-unmounted, .plugin .state-loading, .plugin .state-disposed { color: var(--fg3); }
+  .plugin .actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+  .switch { display: flex; align-items: center; gap: 7px; background: none; border: none; height: auto; padding: 0; font: inherit; }
+  .switch:hover { border: none; }
+  .switch .track {
+    width: 30px; height: 16px; flex: none; display: inline-flex; align-items: center; padding: 0 2px;
+    background: var(--line2); justify-content: flex-start;
+  }
+  .switch[data-on="true"] .track { background: var(--sent); justify-content: flex-end; }
+  .switch .knob { width: 12px; height: 12px; background: var(--panel); }
+  .switch[data-on="true"] .knob { background: #fff; }
+  .switch[disabled] { color: var(--fg3); cursor: default; }
+  .strip {
+    margin: 0 16px 12px; padding: 9px 11px; border-left: 2px solid;
+    font: 11px/1.6 var(--mono); max-height: 96px; overflow: auto; overflow-wrap: anywhere;
+  }
+  .strip-pending { background: var(--pending-bg); border-left-color: var(--pending); color: var(--pending); }
+  .strip-failed { background: var(--failed-bg); border-left-color: var(--failed); color: var(--failed); }
+  .strip-confirm {
+    display: flex; align-items: center; gap: 16px; padding: 11px 12px; max-height: none;
+    background: var(--failed-bg); border-left-color: var(--failed); font-size: 12px; line-height: 1.5;
+    color: var(--failed);
+  }
+  .strip-confirm .buttons { margin-left: auto; display: flex; gap: 8px; flex: none; }
+  .strip-confirm .buttons button { height: 32px; }
+  .strip-config { background: var(--code); border-left-color: var(--line2); color: var(--fg2); max-height: 220px; white-space: pre; }
+  .plugin-note { padding: 12px 16px; font-size: 12px; color: var(--fg3); }
+
+  .toast {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    padding: 9px 14px; background: var(--fg); color: var(--panel);
+    font: 12px/1 var(--mono); z-index: 10;
+  }
+
+  /* ---------- phone ---------- */
+  @media (max-width: 900px) {
+    header { height: 44px; padding: 0 12px; gap: 12px; }
+    .brand { gap: 14px; }
+    .counters { font-size: 10px; gap: 10px; }
+    .counters .sep, .counters .refresh { display: none; }
+    .filters { padding: 10px 12px; }
+    .filters input[type="search"] { width: auto; flex: 1; min-width: 120px; }
+    .filters .segmented, .filters .check, .filters .spacer { display: none; }
+    .filters[data-open="true"] .segmented, .filters[data-open="true"] .check { display: flex; }
+    .head { display: none; }
+    .split[data-detail="true"] { grid-template-columns: 1fr; }
+    .split[data-detail="true"] .listwrap { display: none; }
+    .row, .listwrap[data-narrow="true"] .row {
+      display: flex; flex-direction: column; gap: 7px; padding: 11px 12px;
+    }
+    .row .grid { display: contents; }
+    .cell-meta { display: flex; align-items: center; gap: 8px; font: 11px/1 var(--mono); color: var(--fg3); }
+    .cell-meta .cell-out { margin-left: auto; }
+    .plugins .grid { grid-template-columns: 1fr; gap: 6px; }
+    .plugin .actions { justify-content: flex-start; }
+    .detail { grid-column: 1 / -1; }
+  }
+  .only-narrow { display: none; }
+  @media (max-width: 900px) { .only-narrow { display: flex; } .only-wide { display: none; } }
 </style>
 </head>
 <body>
+
 <header>
-  <h1>Notifier</h1>
-  <nav>
-    <button data-tab="calls" aria-current="true">Calls</button>
-    <button data-tab="plugins">Plugins</button>
-  </nav>
-  <span class="grow"></span>
-  <div class="stats" id="stats"></div>
-  <button class="btn" id="token-btn" title="Wijzig het API-token">token</button>
+  <div class="brand">
+    <span class="wordmark">hooky</span>
+    <nav class="tabs">
+      <button type="button" data-view="calls" aria-current="true">Calls</button>
+      <button type="button" data-view="plugins">Plugins</button>
+    </nav>
+  </div>
+  <div class="counters" id="counters"></div>
 </header>
 
 <main>
-  <section id="tab-calls">
-    <div class="filters">
-      <input id="f-search" placeholder="zoek in titel of body" size="22">
-      <input id="f-hook" placeholder="hook" size="12">
-      <select id="f-level">
-        <option value="">elk level</option>
-      </select>
-      <select id="f-outcome">
-        <option value="">elke uitkomst</option>
+  <!-- ============ calls ============ -->
+  <section id="view-calls">
+    <div class="filters" id="filters">
+      <input type="search" id="f-search" placeholder="search title and body…" autocomplete="off">
+      <select id="f-hook" aria-label="hook"><option value="">hook: all</option></select>
+      <select id="f-level" aria-label="level"><option value="">level: all</option></select>
+      <select id="f-outcome" aria-label="uitkomst">
+        <option value="">outcome: all</option>
         <option value="delivered">delivered</option>
         <option value="partial">partial</option>
         <option value="failed">failed</option>
       </select>
-      <select id="f-state">
-        <option value="">alle</option>
-        <option value="pending">alleen pending</option>
-        <option value="done">alleen afgerond</option>
-      </select>
-      <select id="f-since">
-        <option value="">alle tijd</option>
-        <option value="1h">laatste uur</option>
-        <option value="24h">laatste dag</option>
-        <option value="7d">laatste week</option>
-      </select>
-      <button class="btn" id="refresh">verversen</button>
-      <label class="note"><input type="checkbox" id="auto" checked> auto</label>
+      <label class="check"><input type="checkbox" id="f-pending">pending only</label>
+      <div class="segmented" id="f-since">
+        <button type="button" data-since="1h" aria-pressed="false">1h</button>
+        <button type="button" data-since="24h" aria-pressed="false">24h</button>
+        <button type="button" data-since="7d" aria-pressed="false">7d</button>
+      </div>
+      <button type="button" class="link spacer" id="clear-filters" hidden>clear filters</button>
+      <button type="button" class="only-narrow" id="toggle-filters">filters</button>
     </div>
-    <table>
-      <thead><tr><th>tijd</th><th>hook</th><th>level</th><th>titel</th><th>kanalen</th><th>status</th></tr></thead>
-      <tbody id="rows"></tbody>
-    </table>
-    <div class="empty" id="empty" hidden>Nog geen calls.</div>
-    <div class="filters" style="margin-top:12px">
-      <button class="btn" id="prev">vorige</button>
-      <span class="note" id="page"></span>
-      <button class="btn" id="next">volgende</button>
+
+    <div class="split" id="split" data-detail="false">
+      <div class="listwrap" id="listwrap" data-narrow="false">
+        <div class="head grid" id="list-head"></div>
+        <div class="rows" id="rows"></div>
+        <div class="pager" id="pager"></div>
+      </div>
+      <aside class="detail" id="detail" hidden></aside>
     </div>
   </section>
 
-  <section id="tab-plugins" hidden>
-    <table>
-      <thead><tr><th>id</th><th>plugin</th><th>state</th><th>config</th><th></th></tr></thead>
-      <tbody id="plugin-rows"></tbody>
-    </table>
-    <p class="note">Aan- of uitzetten schrijft direct naar cordis.yml en de loader mount of unmount de plugin meteen.</p>
+  <!-- ============ plugins ============ -->
+  <section id="view-plugins" class="plugins" hidden>
+    <div class="head grid">
+      <div>ID</div><div>MODULE</div><div>STATE</div><div>CONFIG</div><div class="right">SWITCH</div>
+    </div>
+    <div class="rows" id="plugin-rows"></div>
+    <div class="plugin-note">
+      Enabling is immediate. Disabling asks first, inside the row, because the plugin leaves the
+      composition live and everything waiting on its service goes with it.
+    </div>
+  </section>
+
+  <!-- ============ token ============ -->
+  <section id="view-token" hidden>
+    <div class="token-wrap">
+      <div class="token-card">
+        <h2>API token required</h2>
+        <p>
+          This Hooky wants a token for <span class="mono">__API_PREFIX__/*</span>. The same value as
+          <span class="mono">HOOKY_SECRET</span> on the server.
+        </p>
+        <input type="password" id="token-input" placeholder="token" autocomplete="off">
+        <div class="token-error" id="token-error" hidden><span class="dot"></span><span></span></div>
+        <div class="token-actions">
+          <button type="button" class="primary" id="token-connect" style="height:32px; padding:0 13px;">connect</button>
+          <span class="hint">stored in localStorage · hooky.token</span>
+        </div>
+      </div>
+    </div>
   </section>
 </main>
-
-<dialog id="detail">
-  <div class="dlg-head"><strong id="d-title"></strong><span class="grow"></span><span class="mono" id="d-id"></span></div>
-  <div class="dlg-body" id="d-body"></div>
-  <div class="dlg-foot">
-    <button class="btn" id="d-replay">replay</button>
-    <span class="grow"></span>
-    <button class="btn" id="d-close">sluiten</button>
-  </div>
-</dialog>
 
 <script>
 const API = '__API_PREFIX__'
 const LEVELS = ['debug', 'info', 'warning', 'error', 'critical']
-const state = { tab: 'calls', offset: 0, limit: 50, total: 0, current: null }
+const SINCE_LABEL = { '1h': '1h', '24h': '24h', '7d': '7d' }
+const TICK_SECONDS = 5
 
-for (const level of LEVELS) {
-  const option = document.createElement('option')
-  option.value = option.textContent = level
-  document.getElementById('f-level').append(option)
+const state = {
+  view: 'calls',
+  filters: { search: '', hook: '', level: '', outcome: '', pending: false, since: '' },
+  limit: 50,
+  offset: 0,
+  total: 0,
+  events: [],
+  stats: null,
+  plugins: [],
+  detail: null,       // the opened event, with payload
+  wrap: false,        // payload line wrapping
+  confirm: null,      // plugin id waiting for a disable confirmation
+  expanded: new Set(),// plugin ids with their config expanded
+  countdown: TICK_SECONDS,
+  needsToken: false,
+  tokenRejected: false,
 }
+
+const $ = (id) => document.getElementById(id)
+const esc = (value) =>
+  String(value ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+
+const stamp = new Intl.DateTimeFormat('en-CA', {
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+})
+const clock = new Intl.DateTimeFormat('en-GB', {
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+})
+const fmt = (at) => stamp.format(new Date(at)).replace(',', '')
+const fmtClock = (at) => clock.format(new Date(at))
+
+function relative(target) {
+  const seconds = Math.round((target - Date.now()) / 1000)
+  if (seconds <= 0) return 'now'
+  if (seconds < 60) return `in ${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `in ${minutes}m ${seconds % 60}s`
+  return `in ${Math.floor(minutes / 60)}h ${minutes % 60}m`
+}
+
+/* ---------------- token and transport ---------------- */
 
 function token() {
-  let value = localStorage.getItem('notifier.token')
-  if (!value) {
-    value = prompt('API-token (NOTIFIER_SECRET):') || ''
-    if (value) localStorage.setItem('notifier.token', value)
+  try {
+    return localStorage.getItem('hooky.token') ?? ''
+  } catch {
+    return ''
   }
-  return value
 }
+
+function setToken(value) {
+  try {
+    if (value) localStorage.setItem('hooky.token', value)
+    else localStorage.removeItem('hooky.token')
+  } catch {
+    // A private window without storage still works for this session.
+  }
+}
+
+class Unauthorized extends Error {}
 
 async function api(path, options = {}) {
   const response = await fetch(API + path, {
     ...options,
-    headers: { authorization: 'Bearer ' + token(), 'content-type': 'application/json', ...options.headers },
+    headers: { authorization: `Bearer ${token()}`, 'content-type': 'application/json', ...options.headers },
   })
-  if (response.status === 401) {
-    localStorage.removeItem('notifier.token')
-    throw new Error('token afgewezen')
-  }
-  if (!response.ok) throw new Error((await response.text()).slice(0, 200))
+  if (response.status === 401) throw new Unauthorized('401 — token rejected by the server')
+  if (!response.ok) throw new Error((await response.text()).slice(0, 300))
   return response.json()
 }
 
-const fmt = (at) => new Date(at).toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'medium' })
+/* ---------------- status vocabulary ---------------- */
 
-function statusOf(event) {
+function outcomeOf(event) {
+  return event.state === 'pending' ? 'PENDING' : String(event.outcome ?? 'OPEN').toUpperCase()
+}
+
+function outcomeColor(outcome) {
+  if (outcome === 'DELIVERED') return 'var(--sent)'
+  if (outcome === 'FAILED') return 'var(--failed)'
+  if (outcome === 'PARTIAL' || outcome === 'PENDING') return 'var(--pending)'
+  return 'var(--fg3)'
+}
+
+function chip(delivery) {
+  return `<span class="chip chip-${esc(delivery.status)}"><span class="dot"></span>${esc(delivery.channel)}</span>`
+}
+
+/* ---------------- rendering: header ---------------- */
+
+function renderCounters() {
+  const stats = state.stats
+  if (!stats) {
+    $('counters').innerHTML = ''
+    return
+  }
+  const failed = stats.outcomes.failed ?? 0
+  const parts = []
+  if (stats.pending > 0) parts.push(`<span class="pending">${stats.pending} pending</span>`)
+  if (failed > 0) parts.push(`<span class="failed">${failed} failed</span>`)
+  parts.push(`<span>${stats.events} calls</span>`)
+  parts.push('<span class="sep"></span>')
+  parts.push(
+    `<span class="refresh">refresh ${TICK_SECONDS}s · ${state.detail ? 'paused' : state.countdown + 's'}</span>`,
+  )
+  $('counters').innerHTML = parts.join('')
+}
+
+/* ---------------- rendering: calls ---------------- */
+
+function activeFilters() {
+  const { search, hook, level, outcome, pending, since } = state.filters
+  const active = []
+  if (search) active.push({ key: 'search', label: search })
+  if (hook) active.push({ key: 'hook', label: `hook: ${hook}` })
+  if (level) active.push({ key: 'level', label: `level: ${level}` })
+  if (outcome) active.push({ key: 'outcome', label: `uitkomst: ${outcome}` })
+  if (pending) active.push({ key: 'pending', label: 'alleen pending' })
+  if (since) active.push({ key: 'since', label: SINCE_LABEL[since] })
+  return active
+}
+
+function renderListHead() {
+  const narrow = Boolean(state.detail)
+  $('listwrap').dataset.narrow = String(narrow)
+  $('list-head').innerHTML = narrow
+    ? '<div>TIME</div><div>HOOK</div><div>TITLE</div><div class="right">CHANNELS</div>'
+    : '<div>RECEIVED</div><div>HOOK</div><div>LEVEL</div><div>TITLE</div><div>CHANNELS</div><div class="right">OUTCOME</div>'
+}
+
+function renderRows() {
+  const rows = $('rows')
+  if (state.events.length === 0) {
+    rows.innerHTML = activeFilters().length > 0 ? emptyFiltered() : emptyFresh()
+    return
+  }
+  const narrow = Boolean(state.detail)
+  rows.innerHTML = state.events.map((event) => (narrow ? rowNarrow(event) : rowWide(event))).join('')
+}
+
+function rowWide(event) {
+  const outcome = outcomeOf(event)
+  const selected = state.detail?.id === event.id
+  return `
+    <button type="button" class="row" data-id="${esc(event.id)}" aria-selected="${selected}">
+      <span class="grid">
+        <span class="cell-time only-wide">${fmt(event.receivedAt)}</span>
+        <span class="cell-meta only-narrow">
+          <span>${fmtClock(event.receivedAt)}</span><span>${esc(event.hook)}</span>
+          <span class="cell-out" style="color:${outcomeColor(outcome)}">${outcome}</span>
+        </span>
+        <span class="cell-hook only-wide">${esc(event.hook)}</span>
+        <span class="level level-${esc(event.level)} only-wide">${esc(event.level)}</span>
+        <span class="cell-title">
+          <span class="t">${esc(event.title)}</span>
+          ${event.replayOf ? '<span class="replay-tag">REPLAY</span>' : ''}
+        </span>
+        <span class="chips">${event.deliveries.map(chip).join('')}</span>
+        <span class="cell-out only-wide" style="color:${outcomeColor(outcome)}">${outcome}</span>
+      </span>
+    </button>`
+}
+
+function rowNarrow(event) {
+  const outcome = outcomeOf(event)
+  const selected = state.detail?.id === event.id
+  const dots = event.deliveries
+    .map((d) => `<span class="dot dot-${esc(d.status)}" style="background:${statusColor(d.status)}" title="${esc(d.channel)} ${esc(d.status)}"></span>`)
+    .join('')
+  return `
+    <button type="button" class="row" data-id="${esc(event.id)}" aria-selected="${selected}">
+      <span class="grid">
+        <span class="cell-time">${fmtClock(event.receivedAt)}</span>
+        <span class="cell-hook">${esc(event.hook)}</span>
+        <span class="cell-title"><span class="t">${esc(event.title)}</span></span>
+        <span class="dots">${dots}
+          <span class="out" style="color:${outcomeColor(outcome)}">${outcome.slice(0, 4)}</span>
+        </span>
+      </span>
+    </button>`
+}
+
+function statusColor(status) {
+  if (status === 'sent') return 'var(--sent)'
+  if (status === 'failed') return 'var(--failed)'
+  return 'var(--fg3)'
+}
+
+function emptyFresh() {
+  const curl = [
+    `curl -X POST ${location.origin}/hooks/deploy \\`,
+    `  -H 'content-type: application/json' \\`,
+    `  -H "x-hooky-secret: $HOOKY_SECRET" \\`,
+    `  -d '{"level":"info","title":"First call","body":"hello"}'`,
+  ].join('\n')
+  const channels = state.stats?.channels_registered ?? []
+  return `
+    <div class="empty">
+      <h2>No calls received yet</h2>
+      <p>
+        The server is up and listening on <span class="mono">/hooks/&lt;name&gt;</span>. Send it a POST
+        and this list fills itself within ${TICK_SECONDS} seconds.
+      </p>
+      <div style="margin-top:4px">
+        <div class="caption">FIRST CALL<button type="button" class="link" data-copy="curl">copy</button></div>
+        <pre data-wrap="false" id="curl">${esc(curl)}</pre>
+      </div>
+      <div class="mono" style="font-size:11px; color:var(--fg3)">
+        channels registered: ${channels.length ? esc(channels.join(' · ')) : 'none'}
+      </div>
+    </div>`
+}
+
+function emptyFiltered() {
+  const chips = activeFilters()
+    .map((f) => `<span class="chipfilter">${esc(f.label)}<button type="button" data-drop="${esc(f.key)}">×</button></span>`)
+    .join('')
+  return `
+    <div class="empty">
+      <div class="chipfilters" style="margin-bottom:4px">${chips}</div>
+      <h2>No calls match these filters</h2>
+      <p>
+        ${state.stats ? state.stats.events : 0} calls in the history, 0 matching. Widen the window or
+        drop the level.
+      </p>
+      <div class="suggestions">
+        <button type="button" data-widen="since">window → 7d</button>
+        <button type="button" data-widen="level">level → all</button>
+      </div>
+    </div>`
+}
+
+function renderPager() {
+  const from = state.total === 0 ? 0 : state.offset + 1
+  const to = Math.min(state.offset + state.limit, state.total)
+  $('pager').innerHTML = `
+    <span class="count">${state.total === 0 ? 'no results' : `${from}–${to} of ${state.total} · offset ${state.offset}`}</span>
+    <span class="buttons">
+      <button type="button" id="prev" ${state.offset === 0 ? 'disabled' : ''}>previous</button>
+      <button type="button" id="next" ${to >= state.total ? 'disabled' : ''}>next</button>
+    </span>`
+}
+
+/* ---------------- rendering: detail ---------------- */
+
+function renderDetail() {
+  const panel = $('detail')
+  $('split').dataset.detail = state.detail ? 'true' : 'false'
+  panel.hidden = !state.detail
+  if (!state.detail) {
+    panel.innerHTML = ''
+    return
+  }
+
+  const event = state.detail
+  const outcome = outcomeOf(event)
+  const payload = JSON.stringify(event.payload, null, 2)
+  const size = new TextEncoder().encode(payload).length
+
+  panel.innerHTML = `
+    <div class="detail-head">
+      <span class="id">${esc(event.id)}</span>
+      <span class="actions">
+        <button type="button" class="primary" id="do-replay" style="height:28px">replay</button>
+        <button type="button" id="close-detail" class="mono" style="font-size:12px">esc</button>
+      </span>
+    </div>
+    <div class="detail-body">
+      ${banner(event, outcome)}
+      <div>
+        <h2>${esc(event.title)}</h2>
+        ${event.body ? `<div class="body-text">${esc(event.body)}</div>` : ''}
+      </div>
+      <dl class="fields">
+        <dt>hook</dt><dd>${esc(event.hook)}</dd>
+        <dt>level</dt><dd><span class="level-${esc(event.level)}" style="padding:0">${esc(event.level)}</span></dd>
+        <dt>receivedAt</dt><dd>${fmt(event.receivedAt)}</dd>
+        <dt>tags</dt><dd>${event.tags.length ? esc(event.tags.join(' · ')) : '<span style="color:var(--fg3)">none</span>'}</dd>
+        <dt>url</dt><dd>${event.url ? `<a href="${esc(event.url)}" rel="noreferrer noopener">${esc(event.url)}</a>` : '<span style="color:var(--fg3)">null</span>'}</dd>
+        <dt>replayOf</dt><dd>${event.replayOf ? `<button type="button" class="link" data-open="${esc(event.replayOf)}" style="font-size:12px">${esc(event.replayOf)}</button>` : '<span style="color:var(--fg3)">null</span>'}</dd>
+      </dl>
+      <div>
+        <div class="caption">DELIVERIES · ${event.deliveries.length}</div>
+        ${event.deliveries.length ? `<div class="deliveries">${event.deliveries.map(delivery).join('')}</div>` : '<div class="mono" style="font-size:12px; color:var(--fg3)">nothing delivered yet</div>'}
+      </div>
+      <div>
+        <div class="caption">
+          PAYLOAD · ${(size / 1024).toFixed(1)} KB
+          <span style="display:flex; gap:12px; align-items:center">
+            <button type="button" class="link" id="toggle-wrap">wrap lines<span class="toggle">${state.wrap ? 'on' : 'off'}</span></button>
+            <button type="button" class="link" data-copy="payload">copy</button>
+          </span>
+        </div>
+        <pre id="payload" data-wrap="${state.wrap}">${esc(payload)}</pre>
+      </div>
+    </div>`
+}
+
+function banner(event, outcome) {
   if (event.state === 'pending') {
-    const when = event.nextAttemptAt ? ', volgende poging ' + fmt(event.nextAttemptAt) : ''
-    return '<span class="tag pending">pending (' + event.attempts + ')' + when + '</span>'
+    const next = event.nextAttemptAt
+      ? ` · next attempt ${fmtClock(event.nextAttemptAt)} (${relative(event.nextAttemptAt)})`
+      : ''
+    return `<div class="banner banner-pending" id="pending-banner">pending · attempt ${event.attempts}${next}</div>`
   }
-  return '<span class="tag ' + (event.outcome === 'delivered' ? 'sent' : event.outcome === 'partial' ? 'skipped' : 'failed') + '">' + event.outcome + '</span>'
-}
-
-function channelsOf(event) {
-  if (!event.deliveries.length) return '<span class="note">nog niets</span>'
-  return event.deliveries
-    .map((d) => '<span class="tag ' + d.status + '">' + d.channel + '</span>')
-    .join('')
-}
-
-const escape = (value) => String(value ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])
-
-async function loadStats() {
-  const stats = await api('/stats')
-  document.getElementById('stats').innerHTML =
-    '<span><b>' + stats.events + '</b> calls</span>' +
-    '<span><b>' + stats.pending + '</b> pending</span>' +
-    Object.entries(stats.outcomes).map(([key, n]) => '<span>' + key + ' <b>' + n + '</b></span>').join('') +
-    '<span>kanalen <b>' + (stats.channels_registered.join(', ') || 'geen') + '</b></span>'
-}
-
-async function loadCalls() {
-  const params = new URLSearchParams({ limit: state.limit, offset: state.offset })
-  for (const [key, id] of [['search', 'f-search'], ['hook', 'f-hook'], ['level', 'f-level'], ['outcome', 'f-outcome'], ['state', 'f-state'], ['since', 'f-since']]) {
-    const value = document.getElementById(id).value.trim()
-    if (value) params.set(key, value)
+  if (outcome === 'FAILED') {
+    return `<div class="banner banner-failed">failed · gave up after ${event.attempts} attempt(s)</div>`
   }
-  const data = await api('/events?' + params)
-  state.total = data.total
-  const rows = document.getElementById('rows')
-  rows.innerHTML = data.events
-    .map((event) =>
-      '<tr data-id="' + event.id + '">' +
-      '<td class="mono">' + fmt(event.receivedAt) + '</td>' +
-      '<td>' + escape(event.hook) + '</td>' +
-      '<td>' + escape(event.level) + '</td>' +
-      '<td>' + escape(event.title) + (event.replayOf ? ' <span class="tag">replay</span>' : '') + '</td>' +
-      '<td>' + channelsOf(event) + '</td>' +
-      '<td>' + statusOf(event) + '</td>' +
-      '</tr>',
-    )
-    .join('')
-  document.getElementById('empty').hidden = data.events.length > 0
-  document.getElementById('page').textContent =
-    data.total === 0 ? '' : state.offset + 1 + ' tot ' + Math.min(state.offset + state.limit, data.total) + ' van ' + data.total
+  if (outcome === 'PARTIAL') {
+    return `<div class="banner banner-pending">partial · some channels never took it</div>`
+  }
+  return `<div class="banner banner-sent">delivered · ${event.attempts} attempt(s)</div>`
 }
 
-async function loadPlugins() {
-  const data = await api('/plugins')
-  document.getElementById('plugin-rows').innerHTML = data.plugins
-    .map((plugin) =>
-      '<tr>' +
-      '<td class="mono">' + escape(plugin.id) + '</td>' +
-      '<td class="mono">' + escape(plugin.name) + '</td>' +
-      '<td><span class="tag ' + (plugin.state === 'active' ? 'sent' : plugin.state === 'failed' ? 'failed' : 'skipped') + '">' + plugin.state + '</span>' +
-      (plugin.disabled ? '<span class="tag">disabled</span>' : '') + '</td>' +
-      '<td class="mono">' + escape(JSON.stringify(plugin.config)).slice(0, 90) + '</td>' +
-      '<td class="row-actions"><button class="btn" data-toggle="' + escape(plugin.id) + '" data-disabled="' + plugin.disabled + '">' +
-      (plugin.disabled ? 'aanzetten' : 'uitzetten') + '</button></td>' +
-      '</tr>',
-    )
-    .join('')
+function delivery(item) {
+  const note =
+    item.status === 'failed' ? item.error : item.status === 'skipped' ? item.reason : ''
+  return `
+    <div class="delivery is-${esc(item.status)}">
+      <div class="delivery-line">
+        <span class="dot" style="background:${statusColor(item.status)}"></span>
+        <span class="name">${esc(item.channel)}</span>
+        <span class="status-${esc(item.status)}">${esc(item.status)}</span>
+        ${item.status === 'skipped' ? '' : `<span class="tries ${item.status === 'failed' ? 'status-failed' : ''}">${item.attempts} attempt${item.attempts === 1 ? '' : 's'}</span>`}
+      </div>
+      ${note ? `<div class="note">${esc(note)}</div>` : ''}
+    </div>`
 }
 
-async function refresh() {
+/* ---------------- rendering: plugins ---------------- */
+
+function renderPlugins() {
+  $('plugin-rows').innerHTML = state.plugins.map(plugin).join('')
+}
+
+function plugin(item) {
+  const config = item.config === null ? '{}' : JSON.stringify(item.config)
+  const expanded = state.expanded.has(item.id)
+
+  let control
+  if (item.state === 'failed') {
+    control = `<button type="button" data-remount="${esc(item.id)}" class="mono" style="font-size:12px">remount</button>`
+  } else if (item.critical) {
+    control = `<span class="switch" data-on="false" style="color:var(--fg3)"><span class="track"><span class="knob"></span></span>locked</span>`
+  } else {
+    const on = !item.disabled
+    control = `
+      <button type="button" class="switch" data-on="${on}" data-toggle="${esc(item.id)}">
+        <span class="track"><span class="knob"></span></span>${on ? 'on' : 'off'}
+      </button>`
+  }
+
+  return `
+    <div class="plugin">
+      <div class="grid">
+        <div>${esc(item.id)}</div>
+        <div class="module">${esc(item.name)}</div>
+        <div class="state-${esc(item.state)}">${esc(item.state)}${item.disabled ? ' · off' : ''}</div>
+        <button type="button" class="config" data-expand="${esc(item.id)}" title="click for the full config">${esc(config)}</button>
+        <div class="actions">${control}</div>
+      </div>
+      ${expanded ? `<div class="strip strip-config">${esc(JSON.stringify(item.config, null, 2))}</div>` : ''}
+      ${reason(item)}
+      ${state.confirm === item.id ? confirmStrip(item) : ''}
+    </div>`
+}
+
+function reason(item) {
+  if (item.state === 'pending') {
+    return `<div class="strip strip-pending">waiting for a service that is not there yet, so the plugin is on but not mounted and delivers nothing</div>`
+  }
+  if (item.state === 'failed') {
+    return `<div class="strip strip-failed">the plugin threw while loading. The stack is in the server log; fix the cause and remount it.</div>`
+  }
+  return ''
+}
+
+function confirmStrip(item) {
+  const isChannel = item.name.includes('channel-')
+  const pending = state.stats?.pending ?? 0
+  const waiting =
+    pending === 0
+      ? ''
+      : ` ${pending} pending call${pending === 1 ? '' : 's'} stay${pending === 1 ? 's' : ''} waiting and will not reach this channel while it is off.`
+  const consequence = isChannel
+    ? `Disabling ${item.id} takes the channel out of the fan-out live.${waiting}`
+    : `Disabling ${item.id} takes the plugin out of the composition live, and everything waiting on its service goes with it.`
+  return `
+    <div class="strip strip-confirm">
+      <span>${esc(consequence)}</span>
+      <span class="buttons">
+        <button type="button" class="danger" data-confirm="${esc(item.id)}">disable</button>
+        <button type="button" data-cancel="1">cancel</button>
+      </span>
+    </div>`
+}
+
+/* ---------------- loading ---------------- */
+
+function query() {
+  const params = new URLSearchParams({ limit: String(state.limit), offset: String(state.offset) })
+  const { search, hook, level, outcome, pending, since } = state.filters
+  if (search) params.set('search', search)
+  if (hook) params.set('hook', hook)
+  if (level) params.set('level', level)
+  if (outcome) params.set('outcome', outcome)
+  if (pending) params.set('state', 'pending')
+  if (since) params.set('since', since)
+  return params
+}
+
+let generation = 0
+
+/**
+ * Every load carries a generation. A filter change plus the 5s poll can have two
+ * requests in flight, and without this the slower older one overwrites the newer.
+ */
+async function load() {
+  const mine = ++generation
   try {
-    await loadStats()
-    if (state.tab === 'calls') await loadCalls()
-    else await loadPlugins()
+    const stats = await api('/stats')
+    let events = state.events
+    let total = state.total
+    let plugins = state.plugins
+    let detail = state.detail
+
+    if (state.view === 'calls') {
+      const data = await api(`/events?${query()}`)
+      events = data.events
+      total = data.total
+      if (detail) detail = await api(`/events/${detail.id}`)
+    } else {
+      plugins = (await api('/plugins')).plugins
+    }
+
+    if (mine !== generation) return   // a newer load already answered
+    state.stats = stats
+    state.events = events
+    state.total = total
+    state.plugins = plugins
+    state.detail = detail
+    state.needsToken = false
+    render()
   } catch (error) {
-    document.getElementById('stats').textContent = String(error.message)
+    if (mine !== generation) return
+    if (error instanceof Unauthorized) {
+      state.needsToken = true
+      state.tokenRejected = Boolean(token())
+      showTokenError(error.message)
+      render()
+      return
+    }
+    toast(error.message)
   }
 }
 
-document.querySelectorAll('nav button').forEach((button) => {
-  button.addEventListener('click', () => {
-    state.tab = button.dataset.tab
-    document.querySelectorAll('nav button').forEach((other) => other.setAttribute('aria-current', String(other === button)))
-    document.getElementById('tab-calls').hidden = state.tab !== 'calls'
-    document.getElementById('tab-plugins').hidden = state.tab !== 'plugins'
-    void refresh()
-  })
-})
+/* ---------------- render root ---------------- */
 
-document.getElementById('rows').addEventListener('click', async (event) => {
-  const row = event.target.closest('tr[data-id]')
-  if (!row) return
-  const detail = await api('/events/' + row.dataset.id)
-  state.current = detail.id
-  document.getElementById('d-title').textContent = detail.title
-  document.getElementById('d-id').textContent = detail.id
-  document.getElementById('d-body').innerHTML =
-    '<dl>' +
-    '<dt>hook</dt><dd>' + escape(detail.hook) + '</dd>' +
-    '<dt>ontvangen</dt><dd>' + fmt(detail.receivedAt) + '</dd>' +
-    '<dt>level</dt><dd>' + escape(detail.level) + '</dd>' +
-    '<dt>status</dt><dd>' + statusOf(detail) + '</dd>' +
-    (detail.url ? '<dt>url</dt><dd><a href="' + escape(detail.url) + '">' + escape(detail.url) + '</a></dd>' : '') +
-    (detail.tags.length ? '<dt>tags</dt><dd>' + detail.tags.map((t) => '<span class="tag">' + escape(t) + '</span>').join('') + '</dd>' : '') +
-    (detail.replayOf ? '<dt>replay van</dt><dd class="mono">' + escape(detail.replayOf) + '</dd>' : '') +
-    '</dl>' +
-    (detail.body ? '<div class="note">body</div><pre>' + escape(detail.body) + '</pre>' : '') +
-    '<div class="note">afleveringen</div><pre>' + escape(JSON.stringify(detail.deliveries, null, 2)) + '</pre>' +
-    '<div class="note">payload</div><pre>' + escape(JSON.stringify(detail.payload, null, 2)) + '</pre>'
-  document.getElementById('detail').showModal()
-})
-
-document.getElementById('plugin-rows').addEventListener('click', async (event) => {
-  const button = event.target.closest('button[data-toggle]')
-  if (!button) return
-  const disabled = button.dataset.disabled === 'true'
-  await api('/plugins/' + button.dataset.toggle, {
-    method: 'PATCH',
-    body: JSON.stringify({ disabled: !disabled }),
+function render() {
+  const showToken = state.needsToken
+  $('view-token').hidden = !showToken
+  $('view-calls').hidden = showToken || state.view !== 'calls'
+  $('view-plugins').hidden = showToken || state.view !== 'plugins'
+  document.querySelectorAll('.tabs button').forEach((button) => {
+    button.setAttribute('aria-current', String(button.dataset.view === state.view))
   })
-  await refresh()
-})
 
-document.getElementById('d-replay').addEventListener('click', async () => {
-  await api('/events/' + state.current + '/replay', { method: 'POST' })
-  document.getElementById('detail').close()
-  await refresh()
-})
-document.getElementById('d-close').addEventListener('click', () => document.getElementById('detail').close())
-document.getElementById('refresh').addEventListener('click', () => void refresh())
-document.getElementById('token-btn').addEventListener('click', () => {
-  localStorage.removeItem('notifier.token')
-  token()
-  void refresh()
-})
-document.getElementById('prev').addEventListener('click', () => {
-  state.offset = Math.max(0, state.offset - state.limit)
-  void loadCalls()
-})
-document.getElementById('next').addEventListener('click', () => {
-  if (state.offset + state.limit < state.total) state.offset += state.limit
-  void loadCalls()
-})
-for (const id of ['f-search', 'f-hook', 'f-level', 'f-outcome', 'f-state', 'f-since']) {
-  document.getElementById(id).addEventListener('change', () => {
-    state.offset = 0
-    void loadCalls()
-  })
+  if (showToken) return
+  renderCounters()
+
+  if (state.view === 'calls') {
+    renderHookOptions()
+    renderFilterState()
+    renderListHead()
+    renderRows()
+    renderPager()
+    renderDetail()
+  } else {
+    renderPlugins()
+  }
 }
+
+function renderHookOptions() {
+  const select = $('f-hook')
+  const hooks = state.stats?.hooks ?? []
+  const wanted = ['', ...hooks].join('|')
+  if (select.dataset.built === wanted) return
+  select.dataset.built = wanted
+  select.innerHTML =
+    '<option value="">hook: all</option>' +
+    hooks.map((hook) => `<option value="${esc(hook)}">${esc(hook)}</option>`).join('')
+  select.value = state.filters.hook
+}
+
+function renderFilterState() {
+  // Never write into a field that has focus: the 5s poll re-renders, and that
+  // would wipe what someone is halfway through typing.
+  const set = (id, value, prop = 'value') => {
+    const element = $(id)
+    if (element !== document.activeElement) element[prop] = value
+  }
+  set('f-search', state.filters.search)
+  set('f-hook', state.filters.hook)
+  set('f-level', state.filters.level)
+  set('f-outcome', state.filters.outcome)
+  set('f-pending', state.filters.pending, 'checked')
+  document.querySelectorAll('#f-since button').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.since === state.filters.since))
+  })
+  $('clear-filters').hidden = activeFilters().length === 0
+}
+
+let toastTimer
+function toast(message) {
+  let element = document.querySelector('.toast')
+  if (!element) {
+    element = document.createElement('div')
+    element.className = 'toast'
+    document.body.append(element)
+  }
+  element.textContent = message
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => element.remove(), 4000)
+}
+
+function showTokenError(message) {
+  const box = $('token-error')
+  box.hidden = !state.tokenRejected
+  box.lastElementChild.textContent = message
+  $('token-input').dataset.rejected = String(state.tokenRejected)
+}
+
+async function copy(text) {
+  try {
+    await navigator.clipboard.writeText(text)
+    toast('copied')
+  } catch {
+    toast('this browser blocks the clipboard, select it by hand')
+  }
+}
+
+/* ---------------- events ---------------- */
+
+document.querySelectorAll('.tabs button').forEach((button) => {
+  button.addEventListener('click', () => {
+    state.view = button.dataset.view
+    state.confirm = null
+    void load()
+  })
+})
+
+$('f-search').addEventListener('input', debounce(() => applyFilter('search', $('f-search').value.trim()), 250))
+$('f-hook').addEventListener('change', () => applyFilter('hook', $('f-hook').value))
+$('f-level').addEventListener('change', () => applyFilter('level', $('f-level').value))
+$('f-outcome').addEventListener('change', () => applyFilter('outcome', $('f-outcome').value))
+$('f-pending').addEventListener('change', () => applyFilter('pending', $('f-pending').checked))
+$('f-since').addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-since]')
+  if (!button) return
+  applyFilter('since', state.filters.since === button.dataset.since ? '' : button.dataset.since)
+})
+$('clear-filters').addEventListener('click', () => {
+  state.filters = { search: '', hook: '', level: '', outcome: '', pending: false, since: '' }
+  state.offset = 0
+  void load()
+})
+$('toggle-filters').addEventListener('click', () => {
+  const filters = $('filters')
+  filters.dataset.open = filters.dataset.open === 'true' ? 'false' : 'true'
+})
+
+function applyFilter(key, value) {
+  state.filters[key] = value
+  state.offset = 0     // every filter change resets paging
+  void load()
+}
+
+function debounce(callback, delay) {
+  let timer
+  return (...args) => {
+    clearTimeout(timer)
+    timer = setTimeout(() => callback(...args), delay)
+  }
+}
+
+$('rows').addEventListener('click', async (event) => {
+  const drop = event.target.closest('button[data-drop]')
+  if (drop) {
+    applyFilter(drop.dataset.drop, drop.dataset.drop === 'pending' ? false : '')
+    return
+  }
+  const widen = event.target.closest('button[data-widen]')
+  if (widen) {
+    applyFilter(widen.dataset.widen, widen.dataset.widen === 'since' ? '7d' : '')
+    return
+  }
+  const copyButton = event.target.closest('button[data-copy]')
+  if (copyButton) {
+    await copy($('curl').textContent)
+    return
+  }
+  const row = event.target.closest('.row[data-id]')
+  if (row) await open(row.dataset.id)
+})
+
+$('pager').addEventListener('click', (event) => {
+  if (event.target.id === 'prev') state.offset = Math.max(0, state.offset - state.limit)
+  else if (event.target.id === 'next') state.offset += state.limit
+  else return
+  void load()
+})
+
+$('detail').addEventListener('click', async (event) => {
+  if (event.target.closest('#close-detail')) return close()
+  if (event.target.closest('#toggle-wrap')) {
+    state.wrap = !state.wrap
+    renderDetail()
+    return
+  }
+  if (event.target.closest('button[data-copy]')) {
+    await copy($('payload').textContent)
+    return
+  }
+  const jump = event.target.closest('button[data-open]')
+  if (jump) return void open(jump.dataset.open)
+  if (event.target.closest('#do-replay')) {
+    const id = state.detail.id
+    try {
+      const result = await api(`/events/${id}/replay`, { method: 'POST' })
+      toast(`replay submitted · ${result.id.slice(0, 8)}`)
+      state.offset = 0
+      await open(result.id)
+    } catch (error) {
+      toast(error.message)
+    }
+  }
+})
+
+$('plugin-rows').addEventListener('click', async (event) => {
+  const expand = event.target.closest('button[data-expand]')
+  if (expand) {
+    const id = expand.dataset.expand
+    if (state.expanded.has(id)) state.expanded.delete(id)
+    else state.expanded.add(id)
+    renderPlugins()
+    return
+  }
+  if (event.target.closest('button[data-cancel]')) {
+    state.confirm = null
+    renderPlugins()
+    return
+  }
+  const toggle = event.target.closest('button[data-toggle]')
+  if (toggle) {
+    if (toggle.dataset.on === 'true') {
+      // Disabling is the intervention, so it asks first, inside the row.
+      state.confirm = toggle.dataset.toggle
+      renderPlugins()
+    } else {
+      await patch(toggle.dataset.toggle, { disabled: false })
+    }
+    return
+  }
+  const confirmed = event.target.closest('button[data-confirm]')
+  if (confirmed) {
+    state.confirm = null
+    await patch(confirmed.dataset.confirm, { disabled: true })
+    return
+  }
+  const remount = event.target.closest('button[data-remount]')
+  if (remount) {
+    try {
+      await api(`/plugins/${remount.dataset.remount}/remount`, { method: 'POST' })
+      toast('remounted')
+    } catch (error) {
+      toast(error.message)
+    }
+    await load()
+  }
+})
+
+async function patch(id, body) {
+  try {
+    await api(`/plugins/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+    toast(`${id} ${body.disabled ? 'off' : 'on'}`)
+  } catch (error) {
+    toast(error.message)
+  }
+  await load()
+}
+
+async function open(id) {
+  try {
+    state.detail = await api(`/events/${id}`)
+    render()
+  } catch (error) {
+    toast(error.message)
+  }
+}
+
+function close() {
+  state.detail = null
+  render()
+}
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && state.detail) close()
+})
+
+$('token-connect').addEventListener('click', connect)
+$('token-input').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') connect()
+})
+
+function connect() {
+  const value = $('token-input').value.trim()
+  if (!value) return
+  setToken(value)
+  state.tokenRejected = false
+  $('token-input').value = ''
+  void load()
+}
+
+/* ---------------- the clock ---------------- */
 
 setInterval(() => {
-  if (document.getElementById('auto').checked && !document.getElementById('detail').open) void refresh()
-}, 5000)
-void refresh()
+  if (state.needsToken) return
+  state.countdown -= 1
+  if (state.countdown > 0) {
+    renderCounters()
+    // The pending line keeps counting down even while polling is paused.
+    const banner = $('pending-banner')
+    if (banner && state.detail?.nextAttemptAt) {
+      banner.textContent = `pending · attempt ${state.detail.attempts} · next attempt ${fmtClock(state.detail.nextAttemptAt)} (${relative(state.detail.nextAttemptAt)})`
+    }
+    return
+  }
+  state.countdown = TICK_SECONDS
+  // Polling pauses while a detail is open, so the list cannot shift under a read.
+  if (state.detail) {
+    renderCounters()
+    return
+  }
+  void load()
+}, 1000)
+
+if (!token()) {
+  state.needsToken = true
+  render()
+} else {
+  void load()
+}
 </script>
 </body>
 </html>

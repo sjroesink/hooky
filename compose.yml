@@ -1,5 +1,5 @@
 services:
-  notifier:
+  hooky:
     build: .
     restart: unless-stopped
     env_file: .env
@@ -10,7 +10,7 @@ services:
     volumes:
       # The event history and the outbox queue live here. Losing this volume
       # loses the calls that were still pending.
-      - notifier-data:/app/data
+      - hooky-data:/app/data
 
 volumes:
-  notifier-data:
+  hooky-data:

@@ -1,6 +1,6 @@
-# Notifier
+# Hooky
 
-A webhook receiver where every capability is a plugin. Something POSTs to `/hooks/<name>`, Notifier
+A webhook receiver where every capability is a plugin. Something POSTs to `/hooks/<name>`, Hooky
 turns that into a normalized event, stores it, and delivers it to notification channels. Adding a
 channel is one file plus one row in `cordis.yml`.
 
@@ -19,21 +19,21 @@ The plugin runtime is [Cordis](https://arxiv.org/abs/2608.25512), the implementa
 
 ```sh
 pnpm install
-cp .env.example .env          # set NOTIFIER_SECRET at least
+cp .env.example .env          # set HOOKY_SECRET at least
 pnpm dev
 ```
 
 ```sh
 curl -X POST localhost:3000/hooks/test \
-  -H "x-notifier-secret: $NOTIFIER_SECRET" \
+  -H "x-hooky-secret: $HOOKY_SECRET" \
   -H 'content-type: application/json' \
-  -d '{"title":"deploy klaar","message":"build 1234","level":"info","tags":["deploy"]}'
+  -d '{"title":"deploy finished","message":"build 1234","level":"info","tags":["deploy"]}'
 ```
 
 The response is `202` with the event id. Open `http://localhost:3000/` for the history, or use the CLI:
 
 ```sh
-export NOTIFIER_URL=http://localhost:3000 NOTIFIER_SECRET=...
+export HOOKY_URL=http://localhost:3000 HOOKY_SECRET=...
 node src/cli.ts events list --limit 5
 node src/cli.ts describe            # every command and endpoint, as JSON
 ```
@@ -158,9 +158,31 @@ Every interface lives in `src/core`, every implementation in `src/plugins`. A pl
 `core` and never from another plugin, which is what makes a plugin liftable into its own npm package
 without touching its code.
 
+## The web interface
+
+`http://localhost:3000/` serves one HTML file with inline CSS and JS. No bundler, no framework, no
+build step, and it is theme-aware through `prefers-color-scheme`. Two views:
+
+**Calls.** The history, newest first, refreshing every 5 seconds. A row is meant to be readable without
+opening it: time, hook, level, title, a chip per channel with its status, and the outcome. Clicking a
+row opens a 560px detail panel on the right and narrows the list; Escape closes it. The detail holds the
+fields, the deliveries with their per-channel error, and the payload as it arrived. Replay lives only in
+the detail, so it cannot go off by accident, and polling pauses while a detail is open so the list
+cannot shift under a read. Filters map one to one onto the query string and reset paging on every
+change.
+
+**Plugins.** Every loader entry with its fiber state and config. Enabling is immediate; disabling first
+opens a strip inside the row naming the consequence, because the plugin leaves the composition live and
+everything waiting on its service goes with it. A plugin stuck in `failed` gets a remount button instead
+of a switch. Rows the API marks `critical` (the config entry, the api and the ui plugin) get no switch at
+all, since turning those off would take the page down with them. The CLI can still touch them.
+
+Outside production the page is read from disk per request, so an edit plus a refresh is enough. HMR
+watches modules and `index.html` is not one.
+
 ## API and CLI
 
-The API serves both the UI and the CLI, with `Authorization: Bearer <secret>` or `x-notifier-secret`.
+The API serves both the UI and the CLI, with `Authorization: Bearer <secret>` or `x-hooky-secret`.
 `GET /api/describe` returns the full endpoint catalog, and `node src/cli.ts describe` returns that plus
 the command catalog, both as JSON. That is the intended entry point for an agent driving this.
 
@@ -177,7 +199,7 @@ Debian, not Alpine: the loader's native helper publishes `linux-x64-gnu` and `li
 prebuilts and no musl build. The compose file binds to loopback only. Put a reverse proxy with TLS in
 front, because the shared secret and the API token travel as plain headers.
 
-The `notifier-data` volume holds the event history and the outbox queue. Losing it loses the calls that
+The `hooky-data` volume holds the event history and the outbox queue. Losing it loses the calls that
 were still pending.
 
 ## What is not here

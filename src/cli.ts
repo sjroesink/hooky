@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
  * Thin client over the HTTP API, JSON in and JSON out, so an agent can drive the
- * whole system without knowing anything about cordis. `notifier describe` prints
+ * whole system without knowing anything about cordis. `hooky describe` prints
  * the command catalog and the API catalog in one object.
  *
- *   NOTIFIER_URL     default http://127.0.0.1:3000
- *   NOTIFIER_SECRET  bearer token, same value the api plugin is configured with
+ *   HOOKY_URL     default http://127.0.0.1:3000
+ *   HOOKY_SECRET  bearer token, same value the api plugin is configured with
  */
 
 interface Command {
@@ -17,9 +17,9 @@ interface Command {
 
 type Flags = Record<string, string | boolean>
 
-const BASE = (process.env['NOTIFIER_URL'] ?? 'http://127.0.0.1:3000').replace(/\/+$/, '')
-const PREFIX = process.env['NOTIFIER_API_PREFIX'] ?? '/api'
-const SECRET = process.env['NOTIFIER_SECRET'] ?? ''
+const BASE = (process.env['HOOKY_URL'] ?? 'http://127.0.0.1:3000').replace(/\/+$/, '')
+const PREFIX = process.env['HOOKY_API_PREFIX'] ?? '/api'
+const SECRET = process.env['HOOKY_SECRET'] ?? ''
 
 async function call(method: string, path: string, body?: unknown): Promise<unknown> {
   const response = await fetch(`${BASE}${PREFIX}${path}`, {
@@ -195,6 +195,13 @@ const commands: Record<string, Command> = {
       return call('PATCH', `/plugins/${need(argv[0], 'id')}`, { disabled: true })
     },
   },
+  'plugins remount': {
+    use: 'reload an entry, for one stuck in failed',
+    args: '<id>',
+    async run(argv) {
+      return call('POST', `/plugins/${need(argv[0], 'id')}/remount`)
+    },
+  },
   'plugins remove': {
     use: 'unmount an entry and delete its row',
     args: '<id>',
@@ -211,11 +218,11 @@ function need(value: string | undefined, what: string): string {
 
 function catalog() {
   return {
-    usage: 'notifier <command> [args] [--flag value]',
+    usage: 'hooky <command> [args] [--flag value]',
     env: {
-      NOTIFIER_URL: `where the instance runs, now ${BASE}`,
-      NOTIFIER_SECRET: SECRET ? 'set' : 'NOT SET, every call will get 401',
-      NOTIFIER_API_PREFIX: PREFIX,
+      HOOKY_URL: `where the instance runs, now ${BASE}`,
+      HOOKY_SECRET: SECRET ? 'set' : 'NOT SET, every call will get 401',
+      HOOKY_API_PREFIX: PREFIX,
     },
     output: 'JSON on stdout, errors as {"error": "..."} on stdout with exit code 1',
     commands: Object.entries(commands).map(([name, command]) => ({
@@ -269,7 +276,7 @@ async function main(): Promise<void> {
   // Longest match first, so 'events list' beats a hypothetical 'events'.
   const key = [words.slice(0, 2).join(' '), words[0]!].find((candidate) => candidate in commands)
   if (!key) {
-    throw new Error(`unknown command '${words.join(' ')}'; run 'notifier describe' for the catalog`)
+    throw new Error(`unknown command '${words.join(' ')}'; run 'hooky describe' for the catalog`)
   }
   const rest = words.slice(key.split(' ').length)
   const result = await commands[key]!.run(rest, flags)

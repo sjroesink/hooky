@@ -16,5 +16,5 @@ await ctx.plugin(Loader)
 await ctx.loader.create({
   id: 'config',
   name: '@deepseek-ai/cordis-plugin-include',
-  config: { path: process.env['NOTIFIER_CONFIG'] ?? './cordis.yml' },
+  config: { path: process.env['HOOKY_CONFIG'] ?? './cordis.yml' },
 } as Parameters<typeof ctx.loader.create>[0])

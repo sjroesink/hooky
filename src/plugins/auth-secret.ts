@@ -13,7 +13,7 @@ export interface Config {
 
 export const Config: Schema<Partial<Config> & { secret: string }, Config> = Schema.object({
   secret: Schema.string().required().role('secret'),
-  header: Schema.string().default('x-notifier-secret'),
+  header: Schema.string().default('x-hooky-secret'),
   hooks: Schema.array(String).default([]).description('Only guard these hooks; empty guards all of them.'),
 })
 

@@ -1,5 +1,5 @@
 {
-  "name": "notifier",
+  "name": "hooky",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -29,6 +29,6 @@
     "typescript": "^5.9.2"
   },
   "bin": {
-    "notifier": "./src/cli.ts"
+    "hooky": "./src/cli.ts"
   }
 }

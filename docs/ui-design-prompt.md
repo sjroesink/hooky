@@ -1,56 +1,55 @@
-# Prompt voor Claude Design
+# Design brief for the web interface
 
-Paste alles onder de streep in Claude Design. De data-vormen komen uit `GET /api/events` en
-`GET /api/plugins` zoals die nu echt antwoorden, dus het ontwerp gebruikt bestaande veldnamen.
+This is the brief that produced the current UI. The design came back as an eight-artboard canvas and
+was implemented in `src/ui/index.html`. Keep this file in sync when the UI's job changes, so a redesign
+starts from the same constraints instead of a screenshot.
 
-Na het ontwerp: de UI is één HTML-bestand met inline CSS en JS (`src/ui/index.html`), geserveerd door
-`src/plugins/ui.ts`. Geen bundler, geen framework. Wat er uit Claude Design komt moet dus in die vorm
-terug te bouwen zijn.
+Paste everything below the line into Claude Design. The data shapes come from `GET /api/events` and
+`GET /api/plugins` as they actually answer, so the mockup uses real field names.
 
 ---
 
-Ontwerp de webinterface van **Notifier**, een self-hosted webhook-ontvanger. Iets stuurt een POST naar
-`/hooks/<naam>`, Notifier maakt daar een genormaliseerd event van en levert dat af aan
-notificatiekanalen (Telegram, ntfy, console). Elke call wordt opgeslagen, en aflevering loopt via een
-outbox: mislukt een kanaal, dan blijft het event pending en probeert de server het later opnieuw, ook
-na een herstart.
+Design the web interface for **Hooky**, a self-hosted webhook receiver. Something POSTs to
+`/hooks/<name>`, Hooky normalizes that into an event and delivers it to notification channels
+(Telegram, ntfy, console). Every call is stored, and delivery runs through an outbox: when a channel
+fails the event stays pending and the server tries again later, including after a restart.
 
-## Wie het gebruikt
+## Who uses it
 
-Één ontwikkelaar die zijn eigen server beheert. Hij opent deze pagina in twee situaties. Eerst: "kwam
-die alert wel aan?" Dan wil hij binnen twee seconden zien of de laatste calls zijn afgeleverd en welk
-kanaal eventueel faalde. Tweede: "waarom kwam hij niet aan?" Dan wil hij de payload zien, de foutmelding
-per kanaal, en de call opnieuw kunnen afvuren.
+One developer running their own server. They open this page in two situations. First: "did that alert
+actually arrive?" Then they want to see within two seconds whether the last calls were delivered and
+which channel failed. Second: "why didn't it arrive?" Then they want the payload, the per-channel
+error, and a way to fire the call again.
 
-Het is een technische tool voor één persoon, geen dashboard voor een team. Dichtheid gaat voor
-witruimte, maar niet ten koste van leesbaarheid.
+It is a technical tool for one person, not a dashboard for a team. Density beats whitespace, but not at
+the cost of legibility.
 
-## Twee views
+## Two views
 
-### 1. Calls (de hoofdview)
+### 1. Calls (the main view)
 
-Een lijst van webhook-calls, nieuwste boven, met een filterbalk erboven en een detailweergave voor één
-call. De lijst verversst elke 5 seconden.
+A list of webhook calls, newest first, with a filter bar above it and a detail view for one call. The
+list refreshes every 5 seconds.
 
-Per rij zichtbaar: tijdstip, hook-naam, level, titel, welke kanalen het kregen met hun status, en de
-uitkomst van de call als geheel. Een replay is als replay te herkennen.
+Per row: time, hook name, level, title, which channels received it with their status, and the outcome
+of the call as a whole. A replay is recognizable as a replay.
 
-Filters: vrij zoeken in titel en body, hook-naam, level, uitkomst, alleen-pending, en een tijdvak
-(laatste uur, dag, week). Plus paginering, want de historie loopt over maanden.
+Filters: free text over title and body, hook name, level, outcome, pending only, and a window (last
+hour, day, week). Plus paging, because the history runs over months.
 
-Detail van één call toont alles: de velden, de body, de payload zoals die binnenkwam (JSON), de
-afleveringen per kanaal met foutmelding en aantal pogingen, en bij een pending call wanneer de volgende
-poging staat. Eén actie: replay.
+The detail of one call shows everything: the fields, the body, the payload as it arrived (JSON), the
+deliveries per channel with error message and attempt count, and for a pending call when the next
+attempt is due. One action: replay.
 
 ### 2. Plugins
 
-Notifier is opgebouwd uit plugins, en de UI kan ze aan- en uitzetten. Een tabel met per plugin: id,
-module, of hij draait, de config, en een schakelaar. Uitzetten haalt de plugin er live uit, dus een
-kanaal stopt meteen met leveren. Dat is een ingreep met gevolgen, laat dat zien.
+Hooky is assembled from plugins, and the UI can turn them on and off. A table with, per plugin: id,
+module, whether it is running, the config, and a switch. Disabling takes the plugin out live, so a
+channel stops delivering immediately. That is an intervention with consequences; show that.
 
-## De echte data
+## The real data
 
-`GET /api/events?limit=50&level=error&since=24h` geeft:
+`GET /api/events?limit=50&level=error&since=24h` answers:
 
 ```json
 {
@@ -62,9 +61,9 @@ kanaal stopt meteen met leveren. Dat is een ingreep met gevolgen, laat dat zien.
       "id": "cd65ba03-a281-4156-a6e3-a5be201e29b3",
       "hook": "deploy",
       "level": "warning",
-      "title": "Release naar feature-2 mislukt",
-      "body": "Stage 'Deploy tenant stacks' faalde na 4m12s",
-      "url": "https://dev.azure.com/innovadisgroep/SHV-Product/_build/results?buildId=88213",
+      "title": "Release to feature-2 failed",
+      "body": "Stage 'Deploy tenant stacks' failed after 4m12s",
+      "url": "https://dev.azure.com/example/product/_build/results?buildId=88213",
       "tags": ["deploy", "ota"],
       "receivedAt": 1788188932292,
       "replayOf": null,
@@ -82,55 +81,55 @@ kanaal stopt meteen met leveren. Dat is een ingreep met gevolgen, laat dat zien.
 }
 ```
 
-Waardes die vast staan:
+Fixed vocabularies:
 
 - `level`: `debug`, `info`, `warning`, `error`, `critical`
-- `state`: `pending` (de server probeert nog) of `done`
-- `outcome`: `delivered`, `partial` (sommige kanalen namen het aan), `failed`, of `null` zolang pending
-- `delivery.status`: `sent`, `failed` (met `error`), `skipped` (met `reason`)
+- `state`: `pending` (the server is still trying) or `done`
+- `outcome`: `delivered`, `partial` (some channels took it), `failed`, or `null` while pending
+- `delivery.status`: `sent`, `failed` (with `error`), `skipped` (with `reason`)
 
-`GET /api/stats` geeft `{ "events": 412, "pending": 3, "outcomes": { "delivered": 400, "partial": 9, "failed": 3 }, "channels": { "telegram": { "sent": 380, "failed": 12 } }, "channels_registered": ["console", "telegram", "ntfy"] }`.
+`GET /api/stats` answers `{ "events": 412, "pending": 3, "hooks": ["ci", "deploy", "uptime"], "outcomes": { "delivered": 400, "partial": 9, "failed": 3 }, "channels": { "telegram": { "sent": 380, "failed": 12 } }, "channels_registered": ["console", "telegram", "ntfy"] }`.
 
-`GET /api/plugins` geeft per plugin `{ "id": "config:telegram", "name": "./src/plugins/channel-telegram.ts", "disabled": false, "state": "active", "config": { "chatId": "-100123", "match": { "minLevel": "warning" } } }`. `state` is `active`, `pending` (wacht op een service die er niet is), `failed`, of `unmounted`.
+`GET /api/plugins` answers, per plugin, `{ "id": "config:telegram", "name": "./src/plugins/channel-telegram.ts", "disabled": false, "state": "active", "config": { "chatId": "-100123", "match": { "minLevel": "warning" } }, "critical": false }`. `state` is `active`, `pending` (waiting for a service that is not there), `failed`, or `unmounted`. `critical` marks the rows that would take the page itself down, so they get no switch.
 
-## Toestanden die je moet ontwerpen
+## States to design
 
-1. Nog geen enkele call. Dit is wat iemand als eerste ziet na het opzetten, dus zet er in dat geval
-   het curl-commando bij waarmee hij de eerste call stuurt.
-2. Filters actief, geen resultaten.
-3. Een pending call met een falend kanaal en een tijdstip voor de volgende poging.
-4. Een call met drie kanalen in drie verschillende statussen, zoals in de JSON hierboven.
-5. Een lange payload en een lange foutmelding, in het detail. Ze mogen niet uit hun kader lopen.
-6. Geen of een afgewezen API-token. De pagina vraagt om een token en bewaart dat in localStorage.
-   Ontwerp dat als een nette staat, niet als een browser-prompt.
-7. Een plugin in `failed` en een in `pending`, met de reden zichtbaar of opvraagbaar.
+1. No calls at all. This is the first thing someone sees after setting it up, so include the curl
+   command that sends the first call.
+2. Filters active, no results.
+3. A pending call with a failing channel and a time for the next attempt.
+4. A call with three channels in three different statuses, as in the JSON above.
+5. A long payload and a long error message, in the detail. Neither may break out of its frame.
+6. No token, or a rejected one. The page asks for a token and keeps it in localStorage. Design that as
+   a proper state, not a browser prompt.
+7. A plugin in `failed` and one in `pending`, with the reason visible or one click away.
 
-## Visuele richting
+## Visual direction
 
-Technisch en rustig, in de lijn van een goede logviewer. Systeemfont voor tekst, monospace voor ids,
-tijden, payloads en foutmeldingen. Werkt in light en dark, gestuurd door de systeemvoorkeur.
+Technical and quiet, in the spirit of a good log viewer. System font for text, monospace for ids,
+times, payloads and error messages. Works in light and dark, driven by the system preference.
 
-Kleur draagt betekenis en niets anders: één kleur voor sent, één voor failed, één voor skipped, één voor
-pending. Level is geen kleurenregenboog, alleen `error` en `critical` mogen opvallen. Geen decoratieve
-iconen, geen emoji, geen gradients.
+Colour carries meaning and nothing else: one colour for sent, one for failed, one for skipped, one for
+pending. Level is not a rainbow; only `error` and `critical` may stand out. No decorative icons, no
+emoji, no gradients.
 
-De status van een call moet uit de rij te lezen zijn zonder hem te openen. Dat is de belangrijkste eis
-aan het ontwerp.
+The status of a call must be readable from the row without opening it. That is the most important
+requirement of the design.
 
-## Randvoorwaarden
+## Constraints
 
-- Eén pagina, twee views, geen router en geen inlogscherm.
-- Bouwbaar als één HTML-bestand met inline CSS en JS, zonder framework en zonder buildstap. Gebruik
-  geen componentbibliotheek en geen externe fonts of iconensets.
-- Moet werkbaar zijn op een laptopscherm van 1280 breed, en leesbaar blijven op een telefoon (de
-  lijst mag daar in kaarten vallen).
-- Tabellen en payloads scrollen binnen hun eigen kader; de pagina zelf scrollt nooit horizontaal.
-- Tijden in `nl-NL`, korte datum met seconden.
+- One page, two views, no router and no login screen.
+- Buildable as a single HTML file with inline CSS and JS, no framework and no build step. No component
+  library, no external fonts or icon sets.
+- Must work on a 1280-wide laptop screen and stay legible on a phone (the list may collapse into cards
+  there).
+- Tables and payloads scroll inside their own frame; the page itself never scrolls horizontally.
+- Times as `2026-08-31 18:57:49`, 24-hour, seconds included.
 
-## Wat ik niet wil
+## What I do not want
 
-Geen KPI-tegels die niets toevoegen, geen grafiek van calls per uur (die vraag stelt niemand hier),
-geen sidebar-navigatie voor twee views, en geen modals over modals. De teller van openstaande en
-mislukte calls mag in de header, klein.
+No KPI tiles that add nothing, no chart of calls per hour (nobody asks that question here), no sidebar
+navigation for two views, and no modals stacked on modals. The counters for pending and failed calls
+may sit in the header, small.
 
-Lever de artboards plus, per view, een korte notitie over welke interactie waar hangt.
+Deliver the artboards plus, per view, a short note on which interaction sits where.

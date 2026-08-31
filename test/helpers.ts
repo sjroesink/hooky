@@ -9,7 +9,7 @@ export function event(overrides: Partial<HookEvent> = {}): HookEvent {
     hook: 'test',
     receivedAt: Date.now(),
     level: 'info',
-    title: 'titel',
+    title: 'title',
     tags: [],
     payload: {},
     ...overrides,

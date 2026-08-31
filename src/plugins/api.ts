@@ -32,6 +32,12 @@ class NoLoader extends Error {}
 const FIBER_STATE = ['pending', 'loading', 'active', 'failed', 'disposed', 'unloading'] as const
 
 /**
+ * Entries the UI must not offer a switch for: the config entry carries every
+ * other row, and these two are what the page itself is talking to.
+ */
+const CRITICAL = ['/ui.ts', '/api.ts']
+
+/**
  * One read and write surface for both the UI and the CLI. It exposes the store
  * for history and `ctx.loader` for the composition, so enabling a channel or
  * changing its config is an API call that also lands in cordis.yml.
@@ -187,6 +193,15 @@ export function apply(ctx: Context, config: Config): void {
     return { status: 200, body: { id, plugin: describeEntry(find(id)!) } }
   })
 
+  route('POST', '/plugins/:id/remount', async (request) => {
+    const id = request.params['id']!
+    const entry = find(id)
+    if (!entry) return { status: 404, body: { error: 'no such plugin entry' } }
+    await entry.refresh()
+    logger.info(`remounted plugin entry ${id}`)
+    return { status: 200, body: { id, plugin: describeEntry(entry) } }
+  })
+
   route('DELETE', '/plugins/:id', async (request) => {
     const id = request.params['id']!
     const entry = find(id)
@@ -234,6 +249,7 @@ export function apply(ctx: Context, config: Config): void {
       disabled: entry.disabled,
       state: state === undefined ? 'unmounted' : (FIBER_STATE[state] ?? String(state)),
       config: entry.options.config ?? null,
+      critical: entry.subtree !== undefined || CRITICAL.some((tail) => entry.options.name.endsWith(tail)),
     }
   }
 }
@@ -260,7 +276,7 @@ function view(stored: StoredEvent) {
 function authorized(request: RouteRequest, secret: string): boolean {
   const header = request.headers['authorization'] ?? ''
   const bearer = header.toLowerCase().startsWith('bearer ') ? header.slice(7) : ''
-  const provided = bearer || request.headers['x-notifier-secret'] || ''
+  const provided = bearer || request.headers['x-hooky-secret'] || ''
   const a = createHash('sha256').update(provided).digest()
   const b = createHash('sha256').update(secret).digest()
   return timingSafeEqual(a, b)
@@ -297,7 +313,7 @@ export function parseSince(input: string): number {
 /** Machine-readable catalog, so an agent can learn the surface in one call. */
 function describeApi(base: string) {
   return {
-    auth: 'Authorization: Bearer <secret>, or x-notifier-secret',
+    auth: 'Authorization: Bearer <secret>, or x-hooky-secret',
     endpoints: [
       { method: 'GET', path: `${base}/describe`, use: 'this catalog' },
       { method: 'GET', path: `${base}/stats`, use: 'counts per outcome and per channel' },
@@ -319,6 +335,7 @@ function describeApi(base: string) {
       { method: 'GET', path: `${base}/plugins`, use: 'loader entries with fiber state and config' },
       { method: 'POST', path: `${base}/plugins`, body: { name: 'string', config: 'object?', disabled: 'boolean?' }, use: 'mount a plugin and write it to cordis.yml' },
       { method: 'PATCH', path: `${base}/plugins/:id`, body: { config: 'object?', disabled: 'boolean?' }, use: 'reconfigure or disable an entry; config merges per key' },
+      { method: 'POST', path: `${base}/plugins/:id/remount`, use: 'reload an entry, for one stuck in failed' },
       { method: 'DELETE', path: `${base}/plugins/:id`, use: 'unmount and remove an entry' },
     ],
     levels: LEVELS,
