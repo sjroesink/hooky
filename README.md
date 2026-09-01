@@ -371,7 +371,9 @@ without touching its code.
 ## The web interface
 
 `http://localhost:3000/` serves one HTML file with inline CSS and JS. No bundler, no framework, no
-build step, and it is theme-aware through `prefers-color-scheme`. Three views:
+build step, and it is theme-aware through `prefers-color-scheme`. Type is one scale of six steps in
+`:root`, from the letterspaced micro labels up to the headings, and every size on the page picks a
+step. So the whole interface gets bigger or smaller by editing six numbers. Three views:
 
 **Calls.** The history, newest first, refreshing every 5 seconds. A row is meant to be readable without
 opening it: time, hook, level, title, a chip per channel with its status, and the outcome. A rejected
@@ -381,7 +383,7 @@ link to the filter. Their detail panel offers `define a hook for "<name>"`, whic
 form with the name and that call's body already in it, so the mapping you write next can complete the
 paths the payload really has. Once the hook exists the same panel says so and replay opens up.
 Clicking a row opens a detail panel on the right and narrows the list; Escape closes it. Drag the divider to
-resize the panel, double-click it to go back to 560px, and the width is remembered per browser. The
+resize the panel, double-click it to go back to 600px, and the width is remembered per browser. The
 detail holds the fields, the deliveries with their per-channel error, and the payload as it arrived.
 The panel scrolls when the window is short, the payload frame scrolls inside it. Replay lives only in
 the detail, so it cannot go off by accident, and polling pauses while a detail is open so the list
@@ -390,8 +392,16 @@ change.
 
 **Hooks.** The definitions, and the place to change them. A row shows the name, a chip per target
 with `missing` when no channel of that name is registered, whether it has its own secret, and whether
-it is on. The panel on the right holds the description, the payload box, an editor per target (title,
-body, url, level, tags, and a filter from a level up), and the curl line for calling the hook.
+it is on. The panel on the right holds the description, the payload box, the target table, and the
+curl line for calling the hook.
+
+That table has a row for every registered channel, not only the ones this hook sends to. A channel it
+sends to shows what it maps, and `edit` opens the editor for it: title, body, url, level, tags, a
+filter from a level up, and whatever settings the channel asks for. A channel it does not use yet has
+one button, `set up`, which makes it a target without a mapping and opens that same editor. So the
+panel answers "where does this hook go" in one list, and adding a destination is a click on the row
+you were already reading.
+
 Defining one and rotating a secret both show the value once, in a strip you can copy, because the
 server only keeps its hash. Rotating asks first, because the old secret dies the moment the new one
 lands. The `hook` field in a call's detail is a link to the definition that routed it.

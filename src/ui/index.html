@@ -16,6 +16,14 @@
     --link:#1f5fa8;
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    /* One type scale, six steps, and every size on the page is one of them. So
+       the whole interface grows or shrinks by editing these six numbers. */
+    --f0: 10px;   /* letterspaced micro labels: the replay tag, the outcome word */
+    --f1: 11px;   /* captions and table heads */
+    --f2: 12px;   /* mono detail: fields, hints, chips, list cells */
+    --f3: 13px;   /* mono controls: buttons, inputs, the editors */
+    --f4: 15px;   /* the body, and prose */
+    --f5: 17px;   /* headings */
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -33,7 +41,7 @@
   html, body { height: 100%; }
   body {
     margin: 0; background: var(--bg); color: var(--fg);
-    font: 13px/1.5 var(--sans);
+    font: var(--f4)/1.55 var(--sans);
     display: flex; flex-direction: column;
     overflow: hidden;                 /* frames scroll, the page never does */
   }
@@ -41,7 +49,7 @@
 
   button, input, select {
     font: inherit; color: inherit; background: var(--panel);
-    border: 1px solid var(--line2); border-radius: 0; padding: 0 9px; height: 28px;
+    border: 1px solid var(--line2); border-radius: 0; padding: 0 9px; height: 32px;
   }
   button { cursor: pointer; }
   button:hover { border-color: var(--fg3); }
@@ -50,56 +58,56 @@
   .mono { font-family: var(--mono); }
   .link {
     background: none; border: none; height: auto; padding: 0; color: var(--fg3);
-    font-family: var(--mono); font-size: 11px;
+    font-family: var(--mono); font-size: var(--f2);
     text-decoration: underline; text-underline-offset: 3px;
   }
   .link:hover { color: var(--fg); border: none; }
-  .primary { background: var(--fg); color: var(--panel); border-color: var(--fg); font: 600 12px/1 var(--mono); }
+  .primary { background: var(--fg); color: var(--panel); border-color: var(--fg); font: 600 var(--f3)/1 var(--mono); }
   .primary:hover { opacity: .88; border-color: var(--fg); }
-  .danger { background: var(--failed); color: #fff; border-color: var(--failed); font: 600 12px/1 var(--mono); }
+  .danger { background: var(--failed); color: #fff; border-color: var(--failed); font: 600 var(--f3)/1 var(--mono); }
 
   /* Icons: 13px, stroked in the button's own colour. A button that carries one
      becomes a flex row, so the label sits beside the glyph instead of under it. */
   .i {
-    width: 13px; height: 13px; flex: none; fill: none; stroke: currentColor;
+    width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor;
     stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
   }
   button:has(> .i) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
   /* The small action next to a caption. Bordered, because an underlined word
      reads as prose and gets skipped. */
   .mini {
-    height: 22px; padding: 0 7px; letter-spacing: 0;
-    font: 11px/1 var(--mono); color: var(--fg2);
+    height: 26px; padding: 0 7px; letter-spacing: 0;
+    font: var(--f2)/1 var(--mono); color: var(--fg2);
     background: var(--panel); border: 1px solid var(--line2);
   }
   .mini:hover { color: var(--fg); border-color: var(--fg3); }
-  .mini .i { width: 12px; height: 12px; }
+  .mini .i { width: 13px; height: 13px; }
   /* The one action in its block that people came to press. */
   .mini-go { background: var(--fg); color: var(--panel); border-color: var(--fg); font-weight: 600; }
   .mini-go:hover { color: var(--panel); border-color: var(--fg); opacity: .88; }
-  .filters .mini { height: 28px; }
+  .filters .mini { height: 32px; }
   .reveal .mini { background: none; color: inherit; border-color: currentColor; }
   .reveal .mini:hover { color: inherit; border-color: currentColor; background: rgba(255, 255, 255, .06); }
 
   /* ---------- header ---------- */
   header {
     flex: none; display: flex; align-items: center; justify-content: space-between;
-    gap: 16px; padding: 0 16px; height: 48px;
+    gap: 16px; padding: 0 16px; height: 52px;
     background: var(--panel); border-bottom: 1px solid var(--line);
   }
   .brand { display: flex; align-items: center; gap: 24px; min-width: 0; }
-  .wordmark { font: 600 13px/1 var(--mono); letter-spacing: .04em; }
+  .wordmark { font: 600 var(--f4)/1 var(--mono); letter-spacing: .04em; }
   .tabs { display: flex; gap: 2px; }
   .tabs button {
     background: none; border: none; border-bottom: 2px solid transparent;
-    height: 32px; padding: 6px 10px; font-size: 13px; color: var(--fg3);
+    height: 34px; padding: 6px 10px; font-size: var(--f4); color: var(--fg3);
   }
   .tabs button[aria-current="true"] { color: var(--fg); font-weight: 560; border-bottom-color: var(--fg); }
   .tabs button:hover { color: var(--fg); border-bottom-color: var(--line2); }
   .tabs button[aria-current="true"]:hover { border-bottom-color: var(--fg); }
   .counters {
     display: flex; align-items: center; gap: 14px;
-    font: 11px/1 var(--mono); color: var(--fg3); flex-wrap: wrap; justify-content: flex-end;
+    font: var(--f2)/1 var(--mono); color: var(--fg3); flex-wrap: wrap; justify-content: flex-end;
   }
   .counters .sep { width: 1px; height: 14px; background: var(--line2); }
   .counters .pending { color: var(--pending); }
@@ -110,23 +118,23 @@
     flex: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     padding: 10px 16px; background: var(--panel2); border-bottom: 1px solid var(--line);
   }
-  .filters input[type="search"] { width: 268px; font: 12px/1 var(--mono); }
-  .filters select { font-size: 12px; }
-  .check { display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 9px;
-           background: var(--panel); border: 1px solid var(--line2); font-size: 12px; cursor: pointer; }
-  .check input { height: 12px; width: 12px; padding: 0; margin: 0; }
-  .segmented { display: flex; height: 28px; border: 1px solid var(--line2); }
+  .filters input[type="search"] { width: 292px; font: var(--f3)/1 var(--mono); }
+  .filters select { font-size: var(--f3); }
+  .check { display: flex; align-items: center; gap: 7px; height: 32px; padding: 0 9px;
+           background: var(--panel); border: 1px solid var(--line2); font-size: var(--f3); cursor: pointer; }
+  .check input { height: 13px; width: 13px; padding: 0; margin: 0; }
+  .segmented { display: flex; height: 32px; border: 1px solid var(--line2); }
   .segmented button {
     border: none; border-left: 1px solid var(--line2); height: 100%; padding: 0 10px;
-    font: 12px/1 var(--mono);
+    font: var(--f3)/1 var(--mono);
   }
   .segmented button:first-child { border-left: none; }
   .segmented button[aria-pressed="true"] { background: var(--fg); color: var(--panel); }
   .filters .spacer { margin-left: auto; }
   .chipfilters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .chipfilter {
-    display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px;
-    background: var(--panel); border: 1px solid var(--fg2); font: 12px/1 var(--mono);
+    display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 9px;
+    background: var(--panel); border: 1px solid var(--fg2); font: var(--f3)/1 var(--mono);
   }
   .chipfilter button { border: none; background: none; height: auto; padding: 0; color: var(--fg3); }
 
@@ -138,7 +146,7 @@
     grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr);
   }
   .split[data-detail="true"] {
-    grid-template-columns: minmax(320px, 1fr) 5px var(--detail-w, 560px);
+    grid-template-columns: minmax(340px, 1fr) 5px var(--detail-w, 600px);
   }
   .listwrap { min-width: 0; display: flex; flex-direction: column; min-height: 0; }
 
@@ -154,15 +162,15 @@
   .rows { flex: 1; min-height: 0; overflow: auto; }
   .grid {
     display: grid; gap: 12px; align-items: center;
-    grid-template-columns: 150px 92px 80px minmax(0, 1fr) 226px 104px;
+    grid-template-columns: 164px 100px 86px minmax(0, 1fr) 246px 112px;
   }
   .listwrap[data-narrow="true"] .grid {
-    gap: 10px; grid-template-columns: 96px 76px minmax(0, 1fr) 118px;
+    gap: 10px; grid-template-columns: 106px 84px minmax(0, 1fr) 128px;
   }
   .head {
     flex: none; padding: 7px 16px; background: var(--panel2);
     border-bottom: 1px solid var(--line2);
-    font: 600 10px/1 var(--mono); letter-spacing: .09em; color: var(--fg3);
+    font: 600 var(--f1)/1 var(--mono); letter-spacing: .09em; color: var(--fg3);
   }
   .head .right { text-align: right; }
   .row {
@@ -173,26 +181,26 @@
   .listwrap[data-narrow="true"] .row { padding: 9px 14px; }
   .row:hover { background: var(--sel); border-color: var(--line); border-left-color: var(--line2); }
   .row[aria-selected="true"] { background: var(--sel); border-left-color: var(--fg); }
-  .cell-time { font: 11px/1.3 var(--mono); color: var(--fg2); }
-  .cell-hook { font: 12px/1.3 var(--mono); }
+  .cell-time { font: var(--f2)/1.3 var(--mono); color: var(--fg2); }
+  .cell-hook { font: var(--f3)/1.3 var(--mono); }
   .cell-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .cell-title span.t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .cell-out { text-align: right; font: 600 10px/1 var(--mono); letter-spacing: .07em; }
+  .cell-out { text-align: right; font: 600 var(--f1)/1 var(--mono); letter-spacing: .07em; }
 
-  .level { font: 600 10px/1 var(--mono); letter-spacing: .06em; padding: 3px 5px; justify-self: start; }
+  .level { font: 600 var(--f1)/1 var(--mono); letter-spacing: .06em; padding: 3px 5px; justify-self: start; }
   .level-debug, .level-info, .level-warning { color: var(--fg2); }
   .level-debug { color: var(--fg3); }
   .level-error { color: var(--failed); }
   .level-critical { color: #fff; background: var(--failed); }
 
   .replay-tag {
-    flex: none; font: 600 9px/1 var(--mono); letter-spacing: .08em;
+    flex: none; font: 600 var(--f0)/1 var(--mono); letter-spacing: .08em;
     color: var(--fg2); border: 1px solid var(--line2); padding: 3px 4px;
   }
   .chips { display: flex; gap: 5px; flex-wrap: wrap; }
   .chip {
     display: flex; align-items: center; gap: 5px; padding: 3px 6px;
-    font: 11px/1 var(--mono); border: 1px solid var(--chip-bg); background: var(--chip-bg); color: var(--fg2);
+    font: var(--f2)/1 var(--mono); border: 1px solid var(--chip-bg); background: var(--chip-bg); color: var(--fg2);
   }
   .chip .dot, .dot { width: 6px; height: 6px; flex: none; background: var(--fg3); }
   .chip-sent { background: var(--sent-bg); border-color: var(--sent-bg); color: var(--sent); }
@@ -202,24 +210,24 @@
   .chip-skipped .dot { background: var(--fg3); }
   .dots { display: flex; gap: 4px; justify-content: flex-end; align-items: center; }
   .dots .dot { width: 9px; height: 9px; }
-  .dots .out { font: 600 9px/1 var(--mono); letter-spacing: .06em; margin-left: 4px; }
+  .dots .out { font: 600 var(--f0)/1 var(--mono); letter-spacing: .06em; margin-left: 4px; }
 
   .pager {
     flex: none; display: flex; align-items: center; justify-content: space-between;
     padding: 10px 16px; background: var(--panel2); border-top: 1px solid var(--line);
   }
-  .pager .count { font: 11px/1 var(--mono); color: var(--fg3); }
+  .pager .count { font: var(--f2)/1 var(--mono); color: var(--fg3); }
   .pager .buttons { display: flex; gap: 6px; }
-  .pager button { font: 12px/1 var(--mono); }
+  .pager button { font: var(--f3)/1 var(--mono); }
   .pager button:disabled { color: var(--fg3); cursor: default; }
 
   /* ---------- detail panel ---------- */
   .detail { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--panel); }
   .detail-head {
     flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 0 14px; height: 48px; background: var(--panel2); border-bottom: 1px solid var(--line);
+    padding: 0 16px; height: 52px; background: var(--panel2); border-bottom: 1px solid var(--line);
   }
-  .detail-head .id { font: 11px/1 var(--mono); color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .detail-head .id { font: var(--f2)/1 var(--mono); color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .detail-head .actions { display: flex; gap: 8px; flex: none; }
   .detail-body { flex: 1; min-height: 0; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
   /* Blocks keep their own height, so a short window makes the body scroll instead of
@@ -228,37 +236,37 @@
 
   .banner {
     display: flex; align-items: center; gap: 10px; padding: 9px 11px;
-    font: 12px/1.4 var(--mono); border-left: 2px solid;
+    font: var(--f3)/1.4 var(--mono); border-left: 2px solid;
   }
   .banner-pending { background: var(--pending-bg); border-left-color: var(--pending); color: var(--pending); }
   .banner-failed { background: var(--failed-bg); border-left-color: var(--failed); color: var(--failed); }
   .banner-sent { background: var(--sent-bg); border-left-color: var(--sent); color: var(--sent); }
 
-  .detail h2 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
-  .detail .body-text { font-size: 13px; color: var(--fg2); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .detail h2 { font-size: var(--f5); font-weight: 600; margin: 0 0 4px; }
+  .detail .body-text { font-size: var(--f4); color: var(--fg2); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
   .fields {
-    display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 6px 12px;
-    font: 12px/1.5 var(--mono); padding-top: 8px; border-top: 1px solid var(--line); margin: 0;
+    display: grid; grid-template-columns: 116px minmax(0, 1fr); gap: 6px 12px;
+    font: var(--f3)/1.5 var(--mono); padding-top: 8px; border-top: 1px solid var(--line); margin: 0;
   }
   .fields dt { color: var(--fg3); }
   .fields dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .caption {
     display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px;
-    font: 600 10px/1 var(--mono); letter-spacing: .09em; color: var(--fg3);
+    font: 600 var(--f1)/1 var(--mono); letter-spacing: .09em; color: var(--fg3);
   }
   .deliveries { border: 1px solid var(--line); display: flex; flex-direction: column; }
   .delivery { border-bottom: 1px solid var(--line); }
   .delivery:last-child { border-bottom: none; }
   .delivery.is-failed { background: var(--failed-bg); }
   .delivery-line {
-    display: flex; align-items: center; gap: 10px; padding: 8px 10px; font: 12px/1 var(--mono);
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px; font: var(--f3)/1 var(--mono);
   }
   .delivery-line .dot { width: 7px; height: 7px; }
-  .delivery-line .name { width: 78px; overflow: hidden; text-overflow: ellipsis; }
+  .delivery-line .name { width: 86px; overflow: hidden; text-overflow: ellipsis; }
   .delivery-line .tries { margin-left: auto; color: var(--fg3); }
   .delivery .note {
     margin: 0 10px 9px; padding: 7px 9px; background: var(--panel); border: 1px solid var(--line2);
-    font: 11px/1.5 var(--mono); overflow-wrap: anywhere; max-height: 96px; overflow: auto;
+    font: var(--f2)/1.5 var(--mono); overflow-wrap: anywhere; max-height: 96px; overflow: auto;
   }
   .delivery.is-failed .note { color: var(--failed); border-color: var(--failed); }
   .delivery.is-skipped .note { background: var(--panel2); border-color: var(--line); color: var(--fg2); }
@@ -268,14 +276,14 @@
 
   pre {
     margin: 0; padding: 10px; background: var(--code); border: 1px solid var(--line);
-    font: 11px/1.55 var(--mono); color: var(--fg2); overflow: auto; max-height: 210px;
+    font: var(--f2)/1.55 var(--mono); color: var(--fg2); overflow: auto; max-height: 210px;
   }
   pre[data-wrap="false"] { white-space: pre; }
   pre[data-wrap="true"] { white-space: pre-wrap; overflow-wrap: anywhere; }
   .toggle { border: 1px solid var(--line2); padding: 2px 5px; margin-left: 4px; }
 
   /* ---------- hooks ---------- */
-  .hooks .grid { grid-template-columns: 172px minmax(0, 1fr) 74px 62px 150px; }
+  .hooks .grid { grid-template-columns: 188px minmax(0, 1fr) 80px 68px 164px; }
   .hooks .rows .row { border-left-width: 2px; }
   .chip-map { border-color: var(--line2); }
   .chip-missing { background: var(--failed-bg); border-color: var(--failed); color: var(--failed); }
@@ -284,78 +292,86 @@
   .reveal {
     display: flex; align-items: center; gap: 10px; padding: 9px 11px;
     background: var(--pending-bg); border-left: 2px solid var(--pending); color: var(--pending);
-    font: 12px/1.4 var(--mono);
+    font: var(--f3)/1.4 var(--mono);
   }
   .reveal .value { flex: 1; overflow: hidden; text-overflow: ellipsis; user-select: all; }
 
+  /* Every registered channel is a row, whether this hook uses it or not. The dot
+     and the buttons carry the difference: a set-up target has an editor, an idle
+     one has the button that gives it one. */
   .targets { border: 1px solid var(--line); display: flex; flex-direction: column; }
   .target { border-bottom: 1px solid var(--line); }
   .target:last-child { border-bottom: none; }
-  .target-line { display: flex; align-items: center; gap: 10px; padding: 8px 10px; font: 12px/1.3 var(--mono); }
-  .target-line .name { flex: none; width: 92px; overflow: hidden; text-overflow: ellipsis; }
+  .target-line { display: flex; align-items: center; gap: 10px; padding: 9px 10px; font: var(--f3)/1.3 var(--mono); }
+  .target-line .dot { width: 7px; height: 7px; background: var(--sent); }
+  .target-line .name { flex: none; width: 104px; overflow: hidden; text-overflow: ellipsis; }
   .target-line .summary {
     flex: 1; min-width: 0; color: var(--fg3); overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap;
   }
   .target-line .buttons { display: flex; gap: 6px; flex: none; }
-  .target-line button { height: 22px; padding: 0 7px; font: 11px/1 var(--mono); }
+  .target-line button { height: 28px; padding: 0 8px; font: var(--f2)/1 var(--mono); }
+  .target.is-idle { background: var(--panel2); }
+  .target.is-idle .dot { background: var(--line2); }
+  .target.is-idle .name { color: var(--fg3); }
   .target.is-missing .name { color: var(--failed); }
+  .target.is-missing .dot { background: var(--failed); }
 
   .editor {
-    display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 7px 10px;
-    padding: 10px; background: var(--panel2); border-top: 1px solid var(--line);
+    display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px 10px;
+    padding: 12px 10px; background: var(--panel); border-top: 1px solid var(--line2);
   }
-  .editor label { font: 11px/1.8 var(--mono); color: var(--fg3); }
+  .editor label { font: var(--f3)/1.8 var(--mono); color: var(--fg3); }
   .editor input, .editor select, .editor textarea {
-    width: 100%; font: 11px/1.5 var(--mono); background: var(--bg); height: 26px; padding: 0 7px;
+    width: 100%; font: var(--f3)/1.5 var(--mono); background: var(--bg); height: 30px; padding: 0 8px;
   }
-  .editor textarea { height: 62px; padding: 6px 7px; resize: vertical; }
+  .editor textarea { height: 72px; padding: 7px 8px; resize: vertical; }
   .editor .row-buttons { grid-column: 2; display: flex; gap: 7px; margin-top: 2px; }
-  .editor .hint { grid-column: 2; font: 11px/1.5 var(--mono); color: var(--fg3); }
+  .editor .hint { grid-column: 2; font: var(--f2)/1.6 var(--mono); color: var(--fg3); }
   /* What the last run of this target did. There is no other record of it. */
   .editor .run-result { grid-column: 2; display: flex; flex-direction: column; gap: 6px; }
-  .run-line { display: flex; align-items: center; gap: 8px; font: 11px/1.5 var(--mono); }
+  .run-line { display: flex; align-items: center; gap: 8px; font: var(--f2)/1.5 var(--mono); }
   .run-line .note { flex: 1; min-width: 0; color: var(--fg3); overflow-wrap: anywhere; }
   /* Labels the chip after it, so a red `error` cannot be read as a failure. */
   .run-line .at { flex: none; color: var(--fg3); }
   .run-sent {
     padding: 7px 9px; background: var(--code); border: 1px solid var(--line2);
-    font: 11px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere;
+    font: var(--f2)/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere;
   }
 
   .form { display: flex; flex-direction: column; gap: 10px; }
   .form .line { display: flex; flex-direction: column; gap: 5px; }
-  .form label { font: 11px/1 var(--mono); color: var(--fg3); }
-  .form input { height: 30px; font: 12px/1 var(--mono); background: var(--bg); }
+  .form label { font: var(--f2)/1 var(--mono); color: var(--fg3); }
+  .form input { height: 34px; font: var(--f3)/1 var(--mono); background: var(--bg); }
   .form .picker { display: flex; flex-wrap: wrap; gap: 8px; }
   .form .picker label {
-    display: flex; align-items: center; gap: 6px; font: 12px/1 var(--mono); color: var(--fg2);
+    display: flex; align-items: center; gap: 6px; font: var(--f3)/1 var(--mono); color: var(--fg2);
     border: 1px solid var(--line2); padding: 6px 8px;
   }
   .form .buttons { display: flex; gap: 8px; margin-top: 2px; }
 
   textarea {
-    font: 11px/1.55 var(--mono); background: var(--code); color: var(--fg);
+    font: var(--f2)/1.55 var(--mono); background: var(--code); color: var(--fg);
     border: 1px solid var(--line2); border-radius: 0; padding: 8px; width: 100%;
-    resize: vertical; min-height: 74px;
+    resize: vertical; min-height: 96px;
   }
 
   /* The {{path}} list. Fixed, not absolute: the panel scrolls, and a dropdown
      clipped by the scroll frame is worse than one that closes when you scroll. */
   .ac {
-    position: fixed; z-index: 30; width: 300px; max-height: 212px; overflow: auto;
+    position: fixed; z-index: 30; width: 330px; max-height: 224px; overflow: auto;
     background: var(--panel); border: 1px solid var(--fg3);
     box-shadow: 0 10px 26px rgba(0, 0, 0, .4);
   }
   .ac .head {
     position: sticky; top: 0; padding: 6px 8px; background: var(--panel2);
     border-bottom: 1px solid var(--line2);
-    font: 10px/1.4 var(--mono); letter-spacing: .07em; color: var(--fg3);
+    font: var(--f1)/1.4 var(--mono); letter-spacing: .07em; color: var(--fg3);
   }
   .ac button {
     display: flex; width: 100%; gap: 10px; align-items: baseline; text-align: left;
     background: none; border: none; border-bottom: 1px solid var(--line);
-    height: auto; padding: 6px 8px; font: 11px/1.3 var(--mono); color: var(--fg2);
+    height: auto; padding: 6px 8px; font: var(--f2)/1.3 var(--mono); color: var(--fg2);
   }
   .ac button:last-child { border-bottom: none; }
   .ac button:hover, .ac button[aria-selected="true"] {
@@ -372,7 +388,7 @@
   .callout {
     display: flex; flex-direction: column; gap: 9px; padding: 11px 12px;
     background: var(--panel2); border: 1px solid var(--line2);
-    font-size: 12px; line-height: 1.55; color: var(--fg2);
+    font-size: var(--f3); line-height: 1.55; color: var(--fg2);
   }
   .callout .actions { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
   .counters button {
@@ -383,25 +399,25 @@
 
   /* ---------- empty states and token ---------- */
   .empty { padding: 44px 32px 48px; display: flex; flex-direction: column; gap: 12px; }
-  .empty h2 { font-size: 15px; font-weight: 600; margin: 0; }
-  .empty p { margin: 0; font-size: 13px; color: var(--fg2); line-height: 1.55; max-width: 460px; }
+  .empty h2 { font-size: var(--f5); font-weight: 600; margin: 0; }
+  .empty p { margin: 0; font-size: var(--f4); color: var(--fg2); line-height: 1.55; max-width: 500px; }
   .empty .suggestions { display: flex; gap: 8px; margin-top: 4px; }
-  .empty .suggestions button { font: 12px/1 var(--mono); }
+  .empty .suggestions button { font: var(--f3)/1 var(--mono); }
   .token-wrap { flex: 1; min-height: 0; overflow: auto; padding: 56px 32px 64px; display: flex; justify-content: center; }
-  .token-card { width: 404px; max-width: 100%; background: var(--panel); border: 1px solid var(--line2); padding: 20px; height: fit-content; }
-  .token-card h2 { font-size: 15px; font-weight: 600; margin: 0; }
-  .token-card p { font-size: 13px; color: var(--fg2); line-height: 1.55; margin: 8px 0 0; }
-  .token-card input { width: 100%; margin-top: 16px; height: 32px; font: 12px/1 var(--mono); background: var(--bg); }
+  .token-card { width: 440px; max-width: 100%; background: var(--panel); border: 1px solid var(--line2); padding: 20px; height: fit-content; }
+  .token-card h2 { font-size: var(--f5); font-weight: 600; margin: 0; }
+  .token-card p { font-size: var(--f4); color: var(--fg2); line-height: 1.55; margin: 8px 0 0; }
+  .token-card input { width: 100%; margin-top: 16px; height: 36px; font: var(--f3)/1 var(--mono); background: var(--bg); }
   .token-card input[data-rejected="true"] { border-color: var(--failed); }
-  .token-error { display: flex; align-items: center; gap: 7px; margin-top: 8px; font: 11px/1.5 var(--mono); color: var(--failed); }
+  .token-error { display: flex; align-items: center; gap: 7px; margin-top: 8px; font: var(--f2)/1.5 var(--mono); color: var(--failed); }
   .token-error .dot { background: var(--failed); }
   .token-actions { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
-  .token-actions .hint { font: 11px/1.5 var(--mono); color: var(--fg3); }
+  .token-actions .hint { font: var(--f2)/1.5 var(--mono); color: var(--fg3); }
 
   /* ---------- plugins ---------- */
-  .plugins .grid { grid-template-columns: 172px minmax(0, 1fr) 96px minmax(0, 1fr) 132px; gap: 14px; }
+  .plugins .grid { grid-template-columns: 188px minmax(0, 1fr) 106px minmax(0, 1fr) 144px; gap: 14px; }
   .plugin { background: var(--panel); border-bottom: 1px solid var(--line); }
-  .plugin > .grid { padding: 11px 16px; font: 12px/1.4 var(--mono); }
+  .plugin > .grid { padding: 11px 16px; font: var(--f3)/1.4 var(--mono); }
   .plugin .module { color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .plugin .config {
     color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -425,31 +441,31 @@
   .switch[disabled] { color: var(--fg3); cursor: default; }
   .strip {
     margin: 0 16px 12px; padding: 9px 11px; border-left: 2px solid;
-    font: 11px/1.6 var(--mono); max-height: 96px; overflow: auto; overflow-wrap: anywhere;
+    font: var(--f2)/1.6 var(--mono); max-height: 96px; overflow: auto; overflow-wrap: anywhere;
   }
   .strip-pending { background: var(--pending-bg); border-left-color: var(--pending); color: var(--pending); }
   .strip-failed { background: var(--failed-bg); border-left-color: var(--failed); color: var(--failed); }
   .strip-confirm {
     display: flex; align-items: center; gap: 16px; padding: 11px 12px; max-height: none;
-    background: var(--failed-bg); border-left-color: var(--failed); font-size: 12px; line-height: 1.5;
+    background: var(--failed-bg); border-left-color: var(--failed); font-size: var(--f3); line-height: 1.5;
     color: var(--failed);
   }
   .strip-confirm .buttons { margin-left: auto; display: flex; gap: 8px; flex: none; }
-  .strip-confirm .buttons button { height: 32px; }
+  .strip-confirm .buttons button { height: 36px; }
   .strip-config { background: var(--code); border-left-color: var(--line2); color: var(--fg2); max-height: 220px; white-space: pre; }
-  .plugin-note { padding: 12px 16px; font-size: 12px; color: var(--fg3); }
+  .plugin-note { padding: 12px 16px; font-size: var(--f3); color: var(--fg3); }
 
   .toast {
     position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
     padding: 9px 14px; background: var(--fg); color: var(--panel);
-    font: 12px/1 var(--mono); z-index: 10;
+    font: var(--f3)/1 var(--mono); z-index: 10;
   }
 
   /* ---------- phone ---------- */
   @media (max-width: 900px) {
-    header { height: 44px; padding: 0 12px; gap: 12px; }
+    header { height: 48px; padding: 0 12px; gap: 12px; }
     .brand { gap: 14px; }
-    .counters { font-size: 10px; gap: 10px; }
+    .counters { font-size: var(--f1); gap: 10px; }
     .counters .sep, .counters .refresh { display: none; }
     .filters { padding: 10px 12px; }
     .filters input[type="search"] { width: auto; flex: 1; min-width: 120px; }
@@ -463,9 +479,13 @@
       display: flex; flex-direction: column; gap: 7px; padding: 11px 12px;
     }
     .row .grid { display: contents; }
-    .cell-meta { display: flex; align-items: center; gap: 8px; font: 11px/1 var(--mono); color: var(--fg3); }
+    .cell-meta { display: flex; align-items: center; gap: 8px; font: var(--f2)/1 var(--mono); color: var(--fg3); }
     .cell-meta .cell-out { margin-left: auto; }
     .plugins .grid, .hooks .grid { grid-template-columns: 1fr; gap: 6px; }
+    /* At this width the summary gets four characters and an ellipsis, which is
+       worse than not showing it. The editor below holds the same fields. */
+    .target-line .summary { display: none; }
+    .target-line .name { width: auto; flex: 1; }
     .editor { grid-template-columns: 1fr; }
     .editor .row-buttons, .editor .hint, .editor .run-result { grid-column: 1; }
     .plugin .actions { justify-content: flex-start; }
@@ -600,7 +620,7 @@
         <input type="password" id="token-input" placeholder="token" autocomplete="off">
         <div class="token-error" id="token-error" hidden><span class="dot"></span><span></span></div>
         <div class="token-actions">
-          <button type="button" class="primary" id="token-connect" style="height:32px; padding:0 13px;">connect</button>
+          <button type="button" class="primary" id="token-connect" style="height:36px; padding:0 14px;">connect</button>
           <span class="hint">stored in localStorage · hooky.token</span>
         </div>
       </div>
@@ -858,7 +878,7 @@ function emptyFresh() {
         <div class="caption">FIRST CALL<button type="button" class="mini" data-copy="curl">${icon('copy')}copy</button></div>
         <pre data-wrap="false" id="curl">${esc(curl)}</pre>
       </div>
-      <div class="mono" style="font-size:11px; color:var(--fg3)">
+      <div class="mono" style="font-size:var(--f2); color:var(--fg3)">
         channels registered: ${channels.length ? esc(channels.join(' · ')) : 'none'}
       </div>
     </div>`
@@ -916,9 +936,9 @@ function renderDetail() {
     <div class="detail-head">
       <span class="id">${esc(event.id)}</span>
       <span class="actions">
-        <button type="button" class="primary" id="do-replay" style="height:28px"
+        <button type="button" class="primary" id="do-replay" style="height:32px"
                 ${stuck ? 'disabled title="there is still no hook by this name to replay it into"' : ''}>${icon('rotate')}replay</button>
-        <button type="button" id="close-detail" class="mono" style="font-size:12px">esc</button>
+        <button type="button" id="close-detail" class="mono" style="font-size:var(--f3)">esc</button>
       </span>
     </div>
     <div class="detail-body">
@@ -939,14 +959,14 @@ function renderDetail() {
         <dt>receivedAt</dt><dd>${fmt(event.receivedAt)}</dd>
         <dt>tags</dt><dd>${event.tags.length ? esc(event.tags.join(' · ')) : '<span style="color:var(--fg3)">none</span>'}</dd>
         <dt>url</dt><dd>${event.url ? `<a href="${esc(event.url)}" rel="noreferrer noopener">${esc(event.url)}</a>` : '<span style="color:var(--fg3)">null</span>'}</dd>
-        <dt>replayOf</dt><dd>${event.replayOf ? `<button type="button" class="link" data-open="${esc(event.replayOf)}" style="font-size:12px">${esc(event.replayOf)}</button>` : '<span style="color:var(--fg3)">null</span>'}</dd>
+        <dt>replayOf</dt><dd>${event.replayOf ? `<button type="button" class="link" data-open="${esc(event.replayOf)}" style="font-size:var(--f3)">${esc(event.replayOf)}</button>` : '<span style="color:var(--fg3)">null</span>'}</dd>
       </dl>
       <div>
         <div class="caption">DELIVERIES · ${event.deliveries.length}</div>
         ${
           event.deliveries.length
             ? `<div class="deliveries">${event.deliveries.map(delivery).join('')}</div>`
-            : `<div class="mono" style="font-size:12px; color:var(--fg3)">${
+            : `<div class="mono" style="font-size:var(--f3); color:var(--fg3)">${
                 event.state === 'rejected'
                   ? 'none, and there never will be: this call never entered the pipeline'
                   : 'nothing delivered yet'
@@ -1040,7 +1060,7 @@ function plugin(item) {
 
   let control
   if (item.state === 'failed') {
-    control = `<button type="button" data-remount="${esc(item.id)}" class="mono" style="font-size:12px">${icon('rotate')}remount</button>`
+    control = `<button type="button" data-remount="${esc(item.id)}" class="mono" style="font-size:var(--f3)">${icon('rotate')}remount</button>`
   } else if (item.critical) {
     control = `<span class="switch" data-on="false" style="color:var(--fg3)"><span class="track"><span class="knob"></span></span>locked</span>`
   } else {
@@ -1253,7 +1273,9 @@ function targetChip(target) {
   const mapped = target.map ? ' · map' : ''
   const cls = target.missing ? 'chip chip-missing' : target.map ? 'chip chip-map' : 'chip'
   const note = target.missing ? ' · missing' : mapped
-  return `<span class="${cls}" title="${esc(targetSummary(target))}"><span class="dot"></span>${esc(target.channel)}${note}</span>`
+  const summary = targetSummary(target)
+  const title = summary ? ` title="${esc(summary)}"` : ''
+  return `<span class="${cls}"${title}><span class="dot"></span>${esc(target.channel)}${note}</span>`
 }
 
 function hookRow(hook) {
@@ -1287,7 +1309,9 @@ function targetSummary(target) {
   for (const [key, value] of Object.entries(target.settings ?? {})) {
     parts.push(secretSetting(target.channel, key) ? `own ${key}` : `${key} ${value}`)
   }
-  return parts.length > 0 ? parts.join(' · ') : 'the message as it came in'
+  // Empty when nothing is set. A target with no mapping forwards the event as it
+  // stands, and a line saying so is a line to read past.
+  return parts.join(' · ')
 }
 
 function renderHookDetail() {
@@ -1311,7 +1335,11 @@ function renderHookDetail() {
     return
   }
 
-  const free = state.channels.filter((channel) => !hook.targets.some((target) => target.channel === channel))
+  // One row per channel: the ones this hook uses first, then the ones it could.
+  const idle = state.channels
+    .filter((channel) => !hook.targets.some((target) => target.channel === channel))
+    .map((channel) => ({ channel, idle: true }))
+  const rows = [...hook.targets, ...idle]
   panel.innerHTML = `
     <div class="detail-head">
       <span class="id">${esc(hook.name)}${hook.disabled ? ' · off' : ''}</span>
@@ -1319,8 +1347,8 @@ function renderHookDetail() {
         <button type="button" class="switch" data-on="${!hook.disabled}" id="h-toggle">
           <span class="track"><span class="knob"></span></span>${hook.disabled ? 'off' : 'on'}
         </button>
-        <button type="button" id="h-rotate" class="mono" style="font-size:12px">${icon('rotate')}rotate</button>
-        <button type="button" id="h-close" class="mono" style="font-size:12px">esc</button>
+        <button type="button" id="h-rotate" class="mono" style="font-size:var(--f3)">${icon('rotate')}rotate</button>
+        <button type="button" id="h-close" class="mono" style="font-size:var(--f3)">esc</button>
       </span>
     </div>
     <div class="detail-body">
@@ -1341,13 +1369,13 @@ function renderHookDetail() {
       <div>
         <div class="caption">DESCRIPTION</div>
         <input id="h-description" value="${esc(hook.description ?? '')}"
-               placeholder="what this hook is for" style="width:100%;height:28px;font:12px/1 var(--mono)">
+               placeholder="what this hook is for" style="width:100%;height:32px;font:var(--f3)/1 var(--mono)">
       </div>
 
       <div>
         <div class="caption">PAYLOAD</div>
         <textarea id="h-payload" spellcheck="false">${esc(state.payload ?? samplePayload())}</textarea>
-        <div class="hint" style="font:11px/1.6 var(--mono);color:var(--fg3);margin-top:6px">
+        <div class="hint" style="font:var(--f2)/1.6 var(--mono);color:var(--fg3);margin-top:6px">
           The body a caller would POST. The editors below complete their
           <span class="mono">{{paths}}</span> from it, and a target's
           <span class="mono">run</span> sends it to that one channel for real.
@@ -1355,19 +1383,20 @@ function renderHookDetail() {
       </div>
 
       <div>
-        <div class="caption">TARGETS · ${hook.targets.length}</div>
+        <div class="caption">TARGETS · ${hook.targets.length} of ${rows.length}</div>
         <div class="targets">
-          ${hook.targets.map((target) => targetBlock(hook, target)).join('') || '<div class="target"><div class="target-line"><span class="summary">no targets yet, so a call to this hook goes nowhere</span></div></div>'}
+          ${
+            rows.map((target) => targetBlock(hook, target)).join('') ||
+            '<div class="target"><div class="target-line"><span class="summary">no channel is registered, so there is nothing to send to yet</span></div></div>'
+          }
         </div>
-        <div class="target-line" style="padding:9px 0 0">
-          <select id="h-channel" style="height:26px;font:11px/1 var(--mono);flex:1;min-width:0">
-            ${free.map((channel) => `<option value="${esc(channel)}">${esc(channel)}</option>`).join('')}
-            ${free.length === 0 ? '<option value="">every registered channel is already a target</option>' : ''}
-          </select>
-          <span class="buttons">
-            <button type="button" id="h-add-target" ${free.length === 0 ? 'disabled' : ''}>${icon('plus')}add</button>
-          </span>
-        </div>
+        ${
+          hook.targets.length === 0 && rows.length > 0
+            ? `<div class="hint" style="font:var(--f2)/1.6 var(--mono);color:var(--fg3);margin-top:6px">
+                 Nothing set up, so a call to this hook goes nowhere.
+               </div>`
+            : ''
+        }
       </div>
 
       <div>
@@ -1394,7 +1423,7 @@ function renderHookDetail() {
                    <button type="button" id="h-drop-no">${icon('x')}cancel</button>
                  </span>
                </div>`
-            : `<button type="button" id="h-drop" class="mono" style="font-size:12px">${icon('trash')}remove this hook</button>`
+            : `<button type="button" id="h-drop" class="mono" style="font-size:var(--f3)">${icon('trash')}remove this hook</button>`
         }
       </div>
     </div>`
@@ -1410,16 +1439,31 @@ function reveal(secret) {
     </div>`
 }
 
+/**
+ * One row of the target table. `target.idle` marks a channel this hook does not
+ * use yet: same row, and one button that turns it into a target.
+ */
 function targetBlock(hook, target) {
   const open = state.openTarget === target.channel
+  const mark = target.idle ? ' is-idle' : target.missing ? ' is-missing' : ''
+  const note = target.idle
+    ? ''
+    : target.missing
+      ? 'no channel of that name is registered'
+      : targetSummary(target)
   return `
-    <div class="target${target.missing ? ' is-missing' : ''}">
+    <div class="target${mark}">
       <div class="target-line">
+        <span class="dot"></span>
         <span class="name">${esc(target.channel)}</span>
-        <span class="summary">${esc(target.missing ? 'no channel of that name is registered' : targetSummary(target))}</span>
+        <span class="summary">${esc(note)}</span>
         <span class="buttons">
-          <button type="button" data-edit="${esc(target.channel)}">${open ? icon('x') + 'close' : icon('pencil') + 'edit'}</button>
-          <button type="button" data-remove-target="${esc(target.channel)}">${icon('trash')}remove</button>
+          ${
+            target.idle
+              ? `<button type="button" data-setup="${esc(target.channel)}">${icon('plus')}set up</button>`
+              : `<button type="button" data-edit="${esc(target.channel)}">${open ? icon('x') + 'close' : icon('pencil') + 'edit'}</button>
+                 <button type="button" data-remove-target="${esc(target.channel)}">${icon('trash')}remove</button>`
+          }
         </span>
       </div>
       ${open ? targetEditor(target) : ''}
@@ -1485,7 +1529,7 @@ function targetEditor(target) {
       <div class="row-buttons">
         <button type="button" class="primary" data-save="${esc(target.channel)}">${icon('check')}save</button>
         <button type="button" data-edit="${esc(target.channel)}">${icon('x')}cancel</button>
-        <button type="button" class="mini mini-go" style="height:28px;margin-left:auto"
+        <button type="button" class="mini mini-go" style="height:32px;margin-left:auto"
                 data-run="${esc(target.channel)}">${icon('play')}run</button>
       </div>
       <div class="run-result" hidden></div>
@@ -1542,7 +1586,7 @@ function newHookForm() {
     <div class="detail-head">
       <span class="id">${draft ? `a hook for ${esc(draft.name)}` : 'a new hook'}</span>
       <span class="actions">
-        <button type="button" id="h-close" class="mono" style="font-size:12px">esc</button>
+        <button type="button" id="h-close" class="mono" style="font-size:var(--f3)">esc</button>
       </span>
     </div>
     <div class="detail-body">
@@ -1559,7 +1603,7 @@ function newHookForm() {
         <div class="line">
           <label for="n-name">name</label>
           <input id="n-name" placeholder="urgent" autocomplete="off" value="${esc(draft?.name ?? '')}">
-          <span class="hint" style="font:11px/1.5 var(--mono);color:var(--fg3)">
+          <span class="hint" style="font:var(--f2)/1.5 var(--mono);color:var(--fg3)">
             The path segment callers use: letters, digits, dot, dash, underscore. It becomes
             <span class="mono">POST ${esc(location.origin)}/hooks/&lt;name&gt;</span>.
           </span>
@@ -1573,7 +1617,7 @@ function newHookForm() {
           <div class="picker">
             ${
               state.channels.length === 0
-                ? '<span class="hint" style="font:11px/1.5 var(--mono);color:var(--fg3)">No channel is registered, so there is nothing to add yet.</span>'
+                ? '<span class="hint" style="font:var(--f2)/1.5 var(--mono);color:var(--fg3)">No channel is registered, so there is nothing to add yet.</span>'
                 : state.channels
                     .map(
                       (channel) =>
@@ -1589,7 +1633,7 @@ function newHookForm() {
         <div class="line">
           <label for="n-payload">payload to map from</label>
           <textarea id="n-payload" spellcheck="false">${esc(state.payload ?? samplePayload())}</textarea>
-          <span class="hint" style="font:11px/1.5 var(--mono);color:var(--fg3)">
+          <span class="hint" style="font:var(--f2)/1.5 var(--mono);color:var(--fg3)">
             Not sent anywhere yet. It stays in the payload box of this hook, where it feeds the
             <span class="mono">{{path}}</span> list in the mapping editor and whatever a target's
             <span class="mono">run</span> sends.
@@ -1599,7 +1643,7 @@ function newHookForm() {
           <button type="button" class="primary" id="n-create">${icon('plus')}define it</button>
           <button type="button" id="h-close">${icon('x')}cancel</button>
         </div>
-        <span class="hint" style="font:11px/1.6 var(--mono);color:var(--fg3)">
+        <span class="hint" style="font:var(--f2)/1.6 var(--mono);color:var(--fg3)">
           A secret is generated and shown once, right here. It is stored as a SHA-256, so this is the
           only moment you can copy it. Lost means rotate.
         </span>
@@ -1945,13 +1989,14 @@ $('hook-detail').addEventListener('click', async (event) => {
     await load()
     return
   }
-  if (event.target.closest('#h-add-target')) {
-    const channel = $('h-channel').value
-    if (!channel) return
+  // Set up: the channel becomes a target with no mapping, and its editor opens.
+  const setup = event.target.closest('button[data-setup]')
+  if (setup) {
+    const channel = setup.dataset.setup
     try {
       await api(`/hooks/${hook.name}/targets/${channel}`, { method: 'PUT', body: '{}' })
       state.openTarget = channel
-      toast(`${channel} added as a target`)
+      toast(`${channel} is a target of ${hook.name}`)
     } catch (error) {
       toast(error.message)
     }
@@ -2341,8 +2386,8 @@ function acClose() {
 
 /* ---------------- the splitter ---------------- */
 
-const DETAIL_MIN = 380
-const DETAIL_DEFAULT = 560
+const DETAIL_MIN = 400
+const DETAIL_DEFAULT = 600
 const DETAIL_KEY = 'hooky.detailWidth'
 
 const SPLITS = ['split', 'hook-split']
