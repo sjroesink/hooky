@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { constantTimeEquals, type HookDefinition } from '../core/routes.ts'
-import type { RouteRequest } from '../core/server.ts'
+import { originOf, type RouteRequest } from '../core/server.ts'
+import type {} from '../core/events.ts'
 
 export const name = 'skill'
 export const inject = ['server']
@@ -39,9 +40,6 @@ export const Config: Schema<Partial<Config>, Config> = Schema.object({
  * agent that installs it.
  */
 const SKILLS = ['hooky-send', 'hooky-manage', 'hooky-history', 'hooky-plugin'] as const
-
-/** A host header is caller-controlled, so it has to look like a host. */
-const HOSTISH = /^[A-Za-z0-9.:[\]_-]+$/
 
 /**
  * The instance, as documents an agent can read and install as skills. Each one
@@ -97,6 +95,23 @@ export function apply(ctx: Context, config: Config): void {
     body: { skills: entries(request) },
   }))
 
+  // This plugin is the one that knows which documents exist and where they are
+  // served, so it is the one that puts them in agents.txt. Unload it and the
+  // Skills lines go with it.
+  ctx.on('agents/declare', async (_document, origin, next) => {
+    const base = await next()
+    return {
+      ...base,
+      skills: [
+        ...base.skills,
+        ...SKILLS.map((skill) => ({
+          url: `${origin}${prefix}/${skill}/SKILL.md`,
+          description: frontmatter(read(skill)).description,
+        })),
+      ],
+    }
+  })
+
   /** Name, description and url per skill, straight out of the documents. */
   function entries(request: RouteRequest) {
     const base = originOf(request, ctx.server.address)
@@ -123,7 +138,7 @@ function index(skills: { name: string; description: string; url: string }[], bas
     '```',
     '',
     'This page is the index and not a skill, so do not save it as one. `' + prefix + '.json` is the same',
-    'list as JSON.',
+    'list as JSON, and `/agents.txt` names the same documents for an agent that starts at the root.',
     '',
     ...skills.flatMap((skill) => [`## ${skill.name}`, '', skill.description, '', `\`${skill.url}\``, '']),
   ].join('\n')
@@ -195,19 +210,3 @@ function authorized(request: RouteRequest, secret: string): boolean {
   return provided !== '' && constantTimeEquals(provided, secret)
 }
 
-/**
- * The instance as the caller reached it, so the examples can be pasted straight
- * into a shell, behind a reverse proxy as well. A header that is not host-shaped
- * falls back to the address actually bound.
- */
-function originOf(request: RouteRequest, bound: { host: string; port: number }): string {
-  const host = first(request.headers['x-forwarded-host']) || first(request.headers['host'])
-  const scheme = first(request.headers['x-forwarded-proto']) === 'https' ? 'https' : 'http'
-  if (!HOSTISH.test(host)) return `${scheme}://${bound.host}:${bound.port}`
-  return `${scheme}://${host}`
-}
-
-/** A forwarded header can carry a list; the client is the first entry. */
-function first(header: string | undefined): string {
-  return (header ?? '').split(',')[0]?.trim() ?? ''
-}

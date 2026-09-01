@@ -6,7 +6,7 @@ description: Extend Hooky itself with a plugin: a new channel (Slack, a webhook,
 # Writing a Hooky plugin
 
 Everything in Hooky is a plugin: the HTTP server, the ingest, the store, the outbox, every channel, the
-API, the web interface. The core owns a vocabulary and nine events, and nothing in it knows what Telegram
+API, the web interface. The core owns a vocabulary and ten events, and nothing in it knows what Telegram
 is. So adding something is one new file plus a row in the composition, and never a change to the core.
 
 This is a job in the repository, with the sources in front of you. If all you need is a hook that exists
@@ -58,6 +58,7 @@ They are declared in `src/core/events.ts`, which is also where the contract of e
 | `notify/delivered` | emit | Observation only, after every channel settled |
 | `hook/processed` | emit | One queue pass is over and the store knows about it |
 | `hook/answer` | waterfall | What the caller gets back: status and body |
+| `agents/declare` | waterfall | What `/agents.txt` says this instance offers an agent |
 
 And the services, each provided by a plugin and reachable as `ctx.<name>`:
 
@@ -149,6 +150,24 @@ ctx.on('hook/answer', async (answer, event, next) => {
 ```
 
 Only accepted calls come past there. A refused one answers through `HookRejected` and never reaches it.
+
+## Something an agent can find
+
+`/agents.txt` and `/agents.json` say what this instance offers an agent that starts at the root and
+knows nothing else. A plugin that serves something usable declares it there itself, instead of leaving
+the operator to repeat it in `cordis.yml` where it would go stale:
+
+```ts
+ctx.on('agents/declare', async (_document, origin, next) => {
+  const base = await next()
+  return { ...base, mcp: [...base.mcp, { url: `${origin}/mcp`, type: 'streamable-http' }] }
+})
+```
+
+`origin` is the instance as this caller reached it, proxy headers included, because both files hold
+absolute urls. The lists are always there, empty at worst, so spread them without checking first.
+`src/plugins/skill.ts` does this for its own documents, which is why moving the skill prefix never
+leaves a stale url behind.
 
 ## Mount it
 

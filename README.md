@@ -263,6 +263,10 @@ remounts the plugin after any config edit.
 every mount decision, which is how HMR stays out of production and how a channel disables itself when
 its token is not configured.
 
+Quote a `!!js` expression that contains a colon followed by a space. The tag applies to a scalar, and
+YAML reads `a ? b : c` as a mapping, so an unquoted ternary arrives at the plugin as an object and the
+row fails to mount with a schema error.
+
 Rows are addressed as `config:<row id>`, a stable id that survives a restart because `src/main.ts`
 mounts the config entry with a fixed id instead of letting the loader generate one.
 
@@ -408,6 +412,45 @@ channels, so those are in either version.
 
 The documents need no token themselves. Serving them is a plugin like everything else: unload `skill`
 and the routes are gone.
+
+## Discovery with agents.txt
+
+An agent that lands on the origin and has never heard of Hooky reads
+[agents.txt](https://agents-txt.com) and finds the skills from there:
+
+```
+# agents.txt
+# Standard: https://agents-txt.com
+# JSON: http://127.0.0.1:3112/agents.json
+
+Skills: http://127.0.0.1:3112/skills/hooky-send/SKILL.md
+Skills: http://127.0.0.1:3112/skills/hooky-manage/SKILL.md
+Skills: http://127.0.0.1:3112/skills/hooky-history/SKILL.md
+Skills: http://127.0.0.1:3112/skills/hooky-plugin/SKILL.md
+```
+
+`GET /agents.json` is the same document as JSON, with the `$schema`, `version`, `standard` and `site`
+the v1.0 schema requires and a `description` per skill taken from its frontmatter. Both files answer
+with `Access-Control-Allow-Origin: *`, because a browser agent reads them cross-origin, and with a
+`Cache-Control` that is an hour in production and `no-store` on a dev instance.
+
+Those `Skills:` lines are in no config. The `skill` plugin declares them on the `agents/declare`
+waterfall, so adding a document or moving the prefix changes the file by itself, and unloading the
+plugin removes the lines. Anything else worth finding goes the same way:
+
+| Directive | Declared by |
+|---|---|
+| `Skills:` | the `skill` plugin, one line per document it serves |
+| `MCP:`, `A2A:`, `UCP:`, `WebMCP:` | the `agents-txt` row, or a plugin with an `agents/declare` listener |
+| `Authorization:`, `Identity:` | the `agents-txt` row, and only together with a `discovery` url |
+
+An authorization block without that url is left out rather than served, because the schema requires it
+and half a declaration validates nowhere. Payments are in the vocabulary in `src/core/agents.ts` and in
+neither file: Hooky charges nobody, and a plugin can add the block if that ever changes.
+
+`robots: true` on the row also serves a `/robots.txt` that allows the two files and disallows the rest.
+Off by default, because a Hooky instance is not a public site and the proxy in front of it may already
+serve one.
 
 ## Docker
 

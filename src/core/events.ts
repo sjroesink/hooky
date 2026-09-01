@@ -1,3 +1,4 @@
+import type { AgentsDocument } from './agents.ts'
 import type { HookTarget } from './routes.ts'
 import type {
   DeliveryResult,
@@ -92,5 +93,19 @@ declare module '@deepseek-ai/cordis' {
       event: HookEvent,
       next: () => Promise<HookAnswer>,
     ): Promise<HookAnswer>
+    /**
+     * What `/agents.txt` and `/agents.json` say this instance offers an agent.
+     * A plugin that serves something usable adds it here instead of leaving the
+     * operator to repeat it in the composition, where it would go stale.
+     *
+     * `origin` is the instance as this caller reached it, because the files hold
+     * absolute urls.
+     * @mode waterfall
+     */
+    'agents/declare'(
+      document: AgentsDocument,
+      origin: string,
+      next: () => Promise<AgentsDocument>,
+    ): Promise<AgentsDocument>
   }
 }

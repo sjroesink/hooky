@@ -58,6 +58,12 @@
   name: ./src/plugins/skill.ts
   config:
     secret: !!js process.env.HOOKY_SECRET
+- id: agents-txt
+  name: ./src/plugins/agents-txt.ts
+  config:
+    # An hour in production, no-store on a dev instance. Quoted, because YAML
+    # reads an unquoted `: ` as a mapping key and the row then fails to mount.
+    cacheSeconds: !!js 'process.env.NODE_ENV === ''production'' ? 3600 : 0'
 - id: rate-limit
   name: ./src/plugins/rate-limit.ts
   config:
