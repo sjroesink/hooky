@@ -4,20 +4,21 @@ import { DatabaseSync, type StatementSync } from 'node:sqlite'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import type {
-  AttemptRecord,
   EventQuery,
-  Outcome,
+  Rejection,
   StoreService,
   StoreStats,
   StoredEvent,
 } from '../core/store.ts'
-import type { DeliveryResult, HookEvent, Level } from '../core/types.ts'
+import type { HookDefinition, HookTarget } from '../core/routes.ts'
+import type { DeliveryResult, HookEvent, Level, Outcome, PassRecord } from '../core/types.ts'
 
 export const name = 'store-sqlite'
 
 export interface Config {
   path: string
   retentionDays: number
+  keepRejected: number
 }
 
 export const Config: Schema<Partial<Config>, Config> = Schema.object({
@@ -25,6 +26,11 @@ export const Config: Schema<Partial<Config>, Config> = Schema.object({
   retentionDays: Schema.natural()
     .default(30)
     .description('Prune settled events older than this; 0 keeps everything.'),
+  keepRejected: Schema.natural()
+    .default(50)
+    .description(
+      'How many calls for an undefined or switched-off hook to keep. The ingest is public, so this is a cap: 0 keeps none.',
+    ),
 })
 
 const SCHEMA = `
@@ -42,7 +48,9 @@ CREATE TABLE IF NOT EXISTS events (
   state           TEXT NOT NULL,
   outcome         TEXT,
   attempts        INTEGER NOT NULL DEFAULT 0,
-  next_attempt_at INTEGER
+  next_attempt_at INTEGER,
+  reject_status   INTEGER,
+  reject_reason   TEXT
 );
 CREATE INDEX IF NOT EXISTS events_received_at ON events(received_at DESC);
 CREATE INDEX IF NOT EXISTS events_due ON events(state, next_attempt_at);
@@ -54,6 +62,15 @@ CREATE TABLE IF NOT EXISTS deliveries (
   attempts INTEGER NOT NULL,
   at       INTEGER NOT NULL,
   PRIMARY KEY (event_id, channel)
+);
+CREATE TABLE IF NOT EXISTS hooks (
+  name        TEXT PRIMARY KEY,
+  description TEXT,
+  disabled    INTEGER NOT NULL DEFAULT 0,
+  secret_hash TEXT,
+  targets     TEXT NOT NULL,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
 );
 `
 
@@ -72,6 +89,19 @@ interface EventRow {
   outcome: string | null
   attempts: number
   next_attempt_at: number | null
+  reject_status: number | null
+  reject_reason: string | null
+}
+
+interface HookRow {
+  name: string
+  description: string | null
+  disabled: number
+  secret_hash: string | null
+  /** JSON array of HookTarget; always read and written whole. */
+  targets: string
+  created_at: number
+  updated_at: number
 }
 
 interface DeliveryRow {
@@ -85,22 +115,32 @@ interface DeliveryRow {
 class SqliteStore extends Service implements StoreService {
   private db: DatabaseSync
   private insertEvent: StatementSync
+  private insertRejected: StatementSync
   private upsertDelivery: StatementSync
   private updateState: StatementSync
+  private keepRejected: number
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'store')
     const file = config.path === ':memory:' ? ':memory:' : resolve(process.cwd(), config.path)
     if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true })
+    this.keepRejected = config.keepRejected
     this.db = new DatabaseSync(file)
     this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec('PRAGMA foreign_keys = ON')
     this.db.exec(SCHEMA)
+    this.migrate()
 
     this.insertEvent = this.db.prepare(
       `INSERT INTO events (id, hook, level, title, body, url, tags, payload, replay_of,
                            received_at, state, outcome, attempts, next_attempt_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, 0, 0)`,
+    )
+    this.insertRejected = this.db.prepare(
+      `INSERT INTO events (id, hook, level, title, body, url, tags, payload, replay_of,
+                           received_at, state, outcome, attempts, next_attempt_at,
+                           reject_status, reject_reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'rejected', NULL, 0, NULL, ?, ?)`,
     )
     this.upsertDelivery = this.db.prepare(
       `INSERT INTO deliveries (event_id, channel, status, detail, attempts, at)
@@ -112,6 +152,20 @@ class SqliteStore extends Service implements StoreService {
     this.updateState = this.db.prepare(
       'UPDATE events SET state = ?, outcome = ?, attempts = ?, next_attempt_at = ? WHERE id = ?',
     )
+  }
+
+  /**
+   * `CREATE TABLE IF NOT EXISTS` leaves an existing database alone, so a column
+   * added later has to be added by hand. Cheap enough to run on every boot.
+   */
+  private migrate(): void {
+    const columns = new Set(
+      (this.db.prepare('PRAGMA table_info(events)').all() as unknown as { name: string }[]).map(
+        (column) => column.name,
+      ),
+    )
+    if (!columns.has('reject_status')) this.db.exec('ALTER TABLE events ADD COLUMN reject_status INTEGER')
+    if (!columns.has('reject_reason')) this.db.exec('ALTER TABLE events ADD COLUMN reject_reason TEXT')
   }
 
   /** Closing the handle is an effect, so a reload does not leak the file lock. */
@@ -132,6 +186,31 @@ class SqliteStore extends Service implements StoreService {
       event.replayOf ?? null,
       event.receivedAt,
     )
+  }
+
+  async reject(event: HookEvent, rejection: Rejection): Promise<void> {
+    if (this.keepRejected === 0) return
+    this.insertRejected.run(
+      event.id,
+      event.hook,
+      event.level,
+      event.title,
+      event.body ?? null,
+      event.url ?? null,
+      JSON.stringify(event.tags),
+      JSON.stringify(event.payload ?? null),
+      event.receivedAt,
+      rejection.status,
+      rejection.reason,
+    )
+    // Bounded on purpose: anyone can POST an unknown name, so this must not be a
+    // way to grow the database.
+    this.db
+      .prepare(
+        `DELETE FROM events WHERE state = 'rejected' AND id NOT IN (
+           SELECT id FROM events WHERE state = 'rejected' ORDER BY received_at DESC LIMIT ?)`,
+      )
+      .run(this.keepRejected)
   }
 
   async get(id: string): Promise<StoredEvent | undefined> {
@@ -182,7 +261,7 @@ class SqliteStore extends Service implements StoreService {
     return this.hydrate(rows)
   }
 
-  async recordAttempt(id: string, results: DeliveryResult[], record: AttemptRecord): Promise<void> {
+  async recordAttempt(id: string, results: DeliveryResult[], record: PassRecord): Promise<void> {
     const at = Date.now()
     for (const result of results) {
       const detail =
@@ -210,9 +289,49 @@ class SqliteStore extends Service implements StoreService {
     return rows.map((row) => row.channel)
   }
 
+  async listHooks(): Promise<HookDefinition[]> {
+    const rows = this.db
+      .prepare('SELECT * FROM hooks ORDER BY name')
+      .all() as unknown as HookRow[]
+    return rows.map((row) => ({
+      name: row.name,
+      description: row.description ?? undefined,
+      disabled: row.disabled === 1,
+      secretHash: row.secret_hash,
+      targets: JSON.parse(row.targets) as HookTarget[],
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }))
+  }
+
+  async saveHook(hook: HookDefinition): Promise<void> {
+    this.db
+      .prepare(
+        `INSERT INTO hooks (name, description, disabled, secret_hash, targets, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(name) DO UPDATE SET
+           description = excluded.description, disabled = excluded.disabled,
+           secret_hash = excluded.secret_hash, targets = excluded.targets,
+           updated_at = excluded.updated_at`,
+      )
+      .run(
+        hook.name,
+        hook.description ?? null,
+        hook.disabled ? 1 : 0,
+        hook.secretHash,
+        JSON.stringify(hook.targets),
+        hook.createdAt,
+        hook.updatedAt,
+      )
+  }
+
+  async removeHook(name: string): Promise<boolean> {
+    return Number(this.db.prepare('DELETE FROM hooks WHERE name = ?').run(name).changes) > 0
+  }
+
   async prune(before: number): Promise<number> {
     const result = this.db
-      .prepare("DELETE FROM events WHERE state = 'done' AND received_at < ?")
+      .prepare("DELETE FROM events WHERE state IN ('done', 'rejected') AND received_at < ?")
       .run(before)
     return Number(result.changes)
   }
@@ -222,12 +341,14 @@ class SqliteStore extends Service implements StoreService {
       .prepare(
         `SELECT COUNT(*) AS events,
                 SUM(CASE WHEN state = 'pending' THEN 1 ELSE 0 END) AS pending,
+                SUM(CASE WHEN state = 'rejected' THEN 1 ELSE 0 END) AS rejected,
                 MIN(received_at) AS oldest, MAX(received_at) AS newest
          FROM events`,
       )
       .get() as unknown as {
       events: number
       pending: number | null
+      rejected: number | null
       oldest: number | null
       newest: number | null
     }
@@ -258,6 +379,7 @@ class SqliteStore extends Service implements StoreService {
     return {
       events: totals.events,
       pending: totals.pending ?? 0,
+      rejected: totals.rejected ?? 0,
       hooks,
       outcomes,
       channels,
@@ -304,11 +426,14 @@ class SqliteStore extends Service implements StoreService {
         replayOf: row.replay_of ?? undefined,
         receivedAt: row.received_at,
       },
-      state: row.state as 'pending' | 'done',
+      state: row.state as StoredEvent['state'],
       outcome: (row.outcome as Outcome | null) ?? null,
       attempts: row.attempts,
       nextAttemptAt: row.next_attempt_at,
       deliveries: byEvent.get(row.id) ?? [],
+      ...(row.reject_status === null
+        ? {}
+        : { rejection: { status: row.reject_status, reason: row.reject_reason ?? '' } }),
     }))
   }
 }

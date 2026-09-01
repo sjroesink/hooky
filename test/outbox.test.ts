@@ -131,7 +131,7 @@ test('without an outbox the core delivers inside the request', async (t) => {
 
   const submitted = await ctx.hooks.submit(event())
   assert.equal(submitted.queued, false)
-  assert.equal(submitted.queued === false && submitted.results[0]!.status, 'sent')
+  assert.equal(submitted.results?.[0]?.status, 'sent')
   // Nothing was stored, because recording is the outbox's job.
   assert.equal(await ctx.store.get(submitted.id), undefined)
 })

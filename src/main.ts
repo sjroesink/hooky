@@ -8,6 +8,10 @@
 import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
+import { loadEnv } from './core/env.ts'
+
+// Before the loader, which evaluates the !!js expressions in cordis.yml.
+loadEnv()
 
 const ctx = new Context()
 ctx.baseUrl = pathToFileURL(process.cwd()).href + '/'

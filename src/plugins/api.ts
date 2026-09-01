@@ -1,11 +1,21 @@
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import type { Entry, EntryOptions, EntryTree } from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type { RouteRequest, RouteResponse } from '../core/server.ts'
-import type { EventQuery, Outcome, StoredEvent } from '../core/store.ts'
-import { LEVELS, describe, type HookEvent, type Level } from '../core/types.ts'
+import {
+  HookExists,
+  NoSuchHook,
+  NoSuchTarget,
+  constantTimeEquals,
+  type HookDefinition,
+  type HookPatch,
+  type HookTarget,
+} from '../core/routes.ts'
+import { HookTargetSchema } from '../core/schema.ts'
+import type { EventQuery, StoredEvent } from '../core/store.ts'
+import { LEVELS, describe, type HookEvent, type Level, type Outcome } from '../core/types.ts'
 import type {} from '../core/events.ts'
 
 export const name = 'api'
@@ -24,6 +34,9 @@ export const Config: Schema<Partial<Config> & { secret: string }, Config> = Sche
 })
 
 class NoLoader extends Error {}
+class NoRoutes extends Error {}
+/** A request that is shaped wrong, as opposed to one that failed. */
+class BadRequest extends Error {}
 
 /**
  * `FiberState` is a const enum, so it has no runtime value to import. These are
@@ -57,6 +70,13 @@ export function apply(ctx: Context, config: Config): void {
         if (error instanceof NoLoader) {
           return { status: 503, body: { error: 'no loader in this composition' } }
         }
+        if (error instanceof NoRoutes) {
+          return { status: 503, body: { error: 'no routes plugin in this composition' } }
+        }
+        if (error instanceof NoSuchHook) return { status: 404, body: { error: error.message } }
+        if (error instanceof NoSuchTarget) return { status: 404, body: { error: error.message } }
+        if (error instanceof HookExists) return { status: 409, body: { error: error.message } }
+        if (error instanceof BadRequest) return { status: 400, body: { error: error.message } }
         logger.error(error)
         return { status: 500, body: { error: describe(error) } }
       }
@@ -67,7 +87,13 @@ export function apply(ctx: Context, config: Config): void {
 
   route('GET', '/stats', async () => ({
     status: 200,
-    body: { ...(await ctx.store.stats()), channels_registered: ctx.notify.names },
+    body: {
+      ...(await ctx.store.stats()),
+      channels_registered: ctx.notify.names,
+      // Definitions that exist right now, so a caller can tell a rejected call
+      // that is still stuck from one whose hook has since been defined.
+      hooks_defined: ctx.get('routes')?.list().map((hook) => hook.name) ?? [],
+    },
   }))
 
   route('GET', '/events', async (request) => {
@@ -81,7 +107,7 @@ export function apply(ctx: Context, config: Config): void {
     const level = params.get('level')
     if (level && (LEVELS as readonly string[]).includes(level)) query.level = level as Level
     const state = params.get('state')
-    if (state === 'pending' || state === 'done') query.state = state
+    if (state === 'pending' || state === 'done' || state === 'rejected') query.state = state
     const outcome = params.get('outcome')
     if (outcome === 'delivered' || outcome === 'partial' || outcome === 'failed') {
       query.outcome = outcome as Outcome
@@ -113,6 +139,20 @@ export function apply(ctx: Context, config: Config): void {
   route('POST', '/events/:id/replay', async (request) => {
     const found = await ctx.store.get(request.params['id']!)
     if (!found) return { status: 404, body: { error: 'no such event' } }
+    if (found.state === 'rejected') {
+      // Nothing took this call the first time. Replaying it before the hook
+      // exists would queue an event that can only be rejected again.
+      const hook = ctx.get('routes')?.get(found.event.hook)
+      if (!hook) {
+        return {
+          status: 409,
+          body: { error: `no hook named '${found.event.hook}', so this call still has nowhere to go` },
+        }
+      }
+      if (hook.disabled) {
+        return { status: 409, body: { error: `hook '${found.event.hook}' is switched off` } }
+      }
+    }
     const replay: HookEvent = {
       ...found.event,
       id: randomUUID(),
@@ -147,6 +187,134 @@ export function apply(ctx: Context, config: Config): void {
     status: 200,
     body: { channels: ctx.notify.names, stats: (await ctx.store.stats()).channels },
   }))
+
+  /* ---------------- hooks ---------------- */
+
+  route('GET', '/hooks', async (request) => {
+    // A backup asks for the hash and wants the definitions as they are, so it
+    // gets no `missing` flag: that is a fact about right now, not about the hook.
+    const hash = request.query.get('include') === 'hash'
+    const channels = hash ? undefined : new Set(ctx.notify.names)
+    return {
+      status: 200,
+      body: { hooks: routesOrThrow().list().map((hook) => hookView(hook, { hash, channels })) },
+    }
+  })
+
+  /** Replace every definition; this is what `hooks import` sends. */
+  route('PUT', '/hooks', async (request) => {
+    const input = json(request.body)
+    const rows = input['hooks']
+    if (!Array.isArray(rows)) throw new BadRequest('body must be { "hooks": [...] }')
+    const written = await routesOrThrow().replaceAll(rows.map((row) => definitionFrom(row)))
+    logger.warn(`replaced the hook table with ${written} definition(s)`)
+    return { status: 200, body: { hooks: written } }
+  })
+
+  route('GET', '/hooks/:name', async (request) => {
+    const channels = new Set(ctx.notify.names)
+    return { status: 200, body: hookView(demand(request.params['name']!), { channels }) }
+  })
+
+  route('POST', '/hooks', async (request) => {
+    const input = json(request.body)
+    const created = await routesOrThrow().create({
+      name: typeof input['name'] === 'string' ? input['name'] : '',
+      description: typeof input['description'] === 'string' ? input['description'] : undefined,
+      disabled: input['disabled'] === true,
+      targets: targetsFrom(input['targets']),
+      secret:
+        input['secret'] === false
+          ? false
+          : typeof input['secret'] === 'string'
+            ? input['secret']
+            : undefined,
+    })
+    logger.info(`created hook '${created.hook.name}'`)
+    return {
+      status: 201,
+      body:
+        created.secret === undefined
+          ? { hook: hookView(created.hook), open: true }
+          : { hook: hookView(created.hook), secret: created.secret, note: 'shown once, not stored' },
+    }
+  })
+
+  route('PATCH', '/hooks/:name', async (request) => {
+    const input = json(request.body)
+    const patch: HookPatch = {}
+    if ('description' in input) {
+      patch.description = typeof input['description'] === 'string' ? input['description'] : undefined
+    }
+    if ('disabled' in input) patch.disabled = input['disabled'] === true
+    if ('targets' in input) patch.targets = targetsFrom(input['targets']) ?? []
+    const hook = await routesOrThrow().update(request.params['name']!, patch)
+    logger.info(`updated hook '${hook.name}'`)
+    return { status: 200, body: hookView(hook) }
+  })
+
+  route('PUT', '/hooks/:name/targets/:channel', async (request) => {
+    const target = targetFrom({ ...json(request.body), channel: request.params['channel'] })
+    const hook = await routesOrThrow().setTarget(request.params['name']!, target)
+    logger.info(`hook '${hook.name}' now targets ${target.channel}`)
+    return { status: 200, body: hookView(hook) }
+  })
+
+  route('DELETE', '/hooks/:name/targets/:channel', async (request) => {
+    const channel = request.params['channel']!
+    const hook = await routesOrThrow().removeTarget(request.params['name']!, channel)
+    logger.info(`hook '${hook.name}' no longer targets ${channel}`)
+    return { status: 200, body: hookView(hook) }
+  })
+
+  route('POST', '/hooks/:name/rotate', async (request) => {
+    const rotated = await routesOrThrow().rotate(request.params['name']!)
+    logger.warn(`rotated the secret of hook '${rotated.hook.name}'`)
+    return {
+      status: 200,
+      body: { hook: hookView(rotated.hook), secret: rotated.secret, note: 'shown once, not stored' },
+    }
+  })
+
+  route('POST', '/hooks/:name/preview', async (request) => {
+    const name = request.params['name']!
+    const payload = request.body ? json(request.body) : {}
+    return { status: 200, body: { hook: name, targets: await routesOrThrow().preview(name, payload) } }
+  })
+
+  /**
+   * A real send to one channel, so a Telegram target actually buzzes. `map` and
+   * `match` in the body replace the stored ones for this run only, which is how
+   * the UI tries an edit before saving it. Nothing is stored and nothing is
+   * queued: the answer is the whole record of the attempt.
+   */
+  route('POST', '/hooks/:name/targets/:channel/run', async (request) => {
+    const name = request.params['name']!
+    const channel = request.params['channel']!
+    const input = request.body ? json(request.body) : {}
+    const validated = targetFrom({
+      channel,
+      ...(input['map'] === undefined ? {} : { map: input['map'] }),
+      ...(input['match'] === undefined ? {} : { match: input['match'] }),
+    })
+    // Only the keys the caller sent: an absent `map` keeps the stored mapping,
+    // while `map: {}` is a deliberate "no mapping for this run".
+    const override: Partial<HookTarget> = {
+      ...(input['map'] === undefined ? {} : { map: validated.map }),
+      ...(input['match'] === undefined ? {} : { match: validated.match }),
+    }
+    const run = await routesOrThrow().run(name, channel, input['payload'] ?? {}, override)
+    logger.info(`ran hook '${name}' to ${channel}: ${run.result?.status ?? `skipped, ${run.skipped}`}`)
+    return { status: 200, body: { hook: name, ...run } }
+  })
+
+  route('DELETE', '/hooks/:name', async (request) => {
+    const name = request.params['name']!
+    demand(name)
+    await routesOrThrow().remove(name)
+    logger.info(`removed hook '${name}'`)
+    return { status: 200, body: { name, removed: true } }
+  })
 
   route('GET', '/plugins', async () => {
     const loader = ctx.get('loader')
@@ -227,6 +395,19 @@ export function apply(ctx: Context, config: Config): void {
     return loaderOrThrow()
   }
 
+  /** Throws a 503-shaped error when the composition has no routes plugin. */
+  function routesOrThrow() {
+    const routes = ctx.get('routes')
+    if (!routes) throw new NoRoutes()
+    return routes
+  }
+
+  function demand(name: string): HookDefinition {
+    const hook = routesOrThrow().get(name)
+    if (!hook) throw new NoSuchHook(name)
+    return hook
+  }
+
   /** Throws a 503-shaped error when the composition has no loader. */
   function loaderOrThrow() {
     const loader = ctx.get('loader')
@@ -254,6 +435,56 @@ export function apply(ctx: Context, config: Config): void {
   }
 }
 
+/** Never the secret, and never the hash unless it was asked for by name. */
+function hookView(hook: HookDefinition, options: { hash?: boolean; channels?: Set<string> } = {}) {
+  return {
+    name: hook.name,
+    description: hook.description ?? null,
+    disabled: hook.disabled,
+    hasSecret: hook.secretHash !== null,
+    ...(options.hash ? { secretHash: hook.secretHash } : {}),
+    targets: hook.targets.map((target) =>
+      options.channels ? { ...target, missing: !options.channels.has(target.channel) } : target,
+    ),
+    createdAt: hook.createdAt,
+    updatedAt: hook.updatedAt,
+  }
+}
+
+/** One target, through the same schema the seed config uses. */
+function targetFrom(input: unknown): HookTarget {
+  try {
+    return HookTargetSchema(input as Partial<HookTarget> & { channel: string })
+  } catch (error) {
+    throw new BadRequest(describe(error))
+  }
+}
+
+function targetsFrom(input: unknown): HookTarget[] | undefined {
+  if (input === undefined) return undefined
+  if (!Array.isArray(input)) throw new BadRequest('targets must be an array')
+  return input.map((entry) => targetFrom(entry))
+}
+
+/** A definition as `hooks export` produced it, hash included. */
+function definitionFrom(input: unknown): HookDefinition {
+  if (typeof input !== 'object' || input === null) throw new BadRequest('a hook must be an object')
+  const row = input as Record<string, unknown>
+  if (typeof row['name'] !== 'string' || row['name'] === '') {
+    throw new BadRequest('a hook needs a name')
+  }
+  const now = Date.now()
+  return {
+    name: row['name'],
+    description: typeof row['description'] === 'string' ? row['description'] : undefined,
+    disabled: row['disabled'] === true,
+    secretHash: typeof row['secretHash'] === 'string' ? row['secretHash'] : null,
+    targets: targetsFrom(row['targets']) ?? [],
+    createdAt: typeof row['createdAt'] === 'number' ? row['createdAt'] : now,
+    updatedAt: typeof row['updatedAt'] === 'number' ? row['updatedAt'] : now,
+  }
+}
+
 function view(stored: StoredEvent) {
   return {
     id: stored.event.id,
@@ -270,6 +501,7 @@ function view(stored: StoredEvent) {
     attempts: stored.attempts,
     nextAttemptAt: stored.nextAttemptAt,
     deliveries: stored.deliveries,
+    rejection: stored.rejection ?? null,
   }
 }
 
@@ -277,9 +509,7 @@ function authorized(request: RouteRequest, secret: string): boolean {
   const header = request.headers['authorization'] ?? ''
   const bearer = header.toLowerCase().startsWith('bearer ') ? header.slice(7) : ''
   const provided = bearer || request.headers['x-hooky-secret'] || ''
-  const a = createHash('sha256').update(provided).digest()
-  const b = createHash('sha256').update(secret).digest()
-  return timingSafeEqual(a, b)
+  return constantTimeEquals(provided, secret)
 }
 
 function json(body: string): Record<string, unknown> {
@@ -324,7 +554,11 @@ function describeApi(base: string) {
         use: 'webhook calls, newest first',
       },
       { method: 'GET', path: `${base}/events/:id`, use: 'one call including its payload' },
-      { method: 'POST', path: `${base}/events/:id/replay`, use: 'submit a copy as a new event' },
+      {
+        method: 'POST',
+        path: `${base}/events/:id/replay`,
+        use: 'submit a copy as a new event; 409 for a rejected call whose hook is still undefined',
+      },
       {
         method: 'POST',
         path: `${base}/send`,
@@ -332,6 +566,65 @@ function describeApi(base: string) {
         use: 'send a notification without going through a webhook',
       },
       { method: 'GET', path: `${base}/channels`, use: 'registered channels and their delivery counts' },
+      {
+        method: 'GET',
+        path: `${base}/hooks`,
+        query: ['include=hash'],
+        use: 'defined hooks with their targets; a target says which channel gets what',
+      },
+      {
+        method: 'PUT',
+        path: `${base}/hooks`,
+        body: { hooks: 'HookDefinition[]' },
+        use: 'replace every definition, for restoring a backup',
+      },
+      { method: 'GET', path: `${base}/hooks/:name`, use: 'one hook' },
+      {
+        method: 'POST',
+        path: `${base}/hooks`,
+        body: {
+          name: 'string',
+          description: 'string?',
+          disabled: 'boolean?',
+          targets: 'HookTarget[]?',
+          secret: 'string | false, omit to generate one',
+        },
+        use: 'define a hook; the secret comes back once and is stored as a hash',
+      },
+      {
+        method: 'PATCH',
+        path: `${base}/hooks/:name`,
+        body: { description: 'string?', disabled: 'boolean?', targets: 'HookTarget[]?' },
+        use: 'change a hook; targets replaces the whole list',
+      },
+      {
+        method: 'PUT',
+        path: `${base}/hooks/:name/targets/:channel`,
+        body: {
+          map: '{ title?, body?, url?: template, level?: Level, tags?: template[] }',
+          match: '{ minLevel?: Level, tags?: string[] }',
+        },
+        use: 'add one channel to a hook and say what it receives',
+      },
+      { method: 'DELETE', path: `${base}/hooks/:name/targets/:channel`, use: 'remove one channel' },
+      { method: 'POST', path: `${base}/hooks/:name/rotate`, use: 'new secret, shown once' },
+      {
+        method: 'POST',
+        path: `${base}/hooks/:name/preview`,
+        body: 'the payload a caller would POST',
+        use: 'the resolved message per channel, without sending anything',
+      },
+      {
+        method: 'POST',
+        path: `${base}/hooks/:name/targets/:channel/run`,
+        body: {
+          payload: 'the body a caller would POST',
+          map: 'MessageMap?, replaces the stored one for this run',
+          match: 'Matcher?, replaces the stored one for this run',
+        },
+        use: 'send that payload to that one channel for real; nothing is stored or queued',
+      },
+      { method: 'DELETE', path: `${base}/hooks/:name`, use: 'remove a hook' },
       { method: 'GET', path: `${base}/plugins`, use: 'loader entries with fiber state and config' },
       { method: 'POST', path: `${base}/plugins`, body: { name: 'string', config: 'object?', disabled: 'boolean?' }, use: 'mount a plugin and write it to cordis.yml' },
       { method: 'PATCH', path: `${base}/plugins/:id`, body: { config: 'object?', disabled: 'boolean?' }, use: 'reconfigure or disable an entry; config merges per key' },
@@ -340,5 +633,10 @@ function describeApi(base: string) {
     ],
     levels: LEVELS,
     outcomes: ['delivered', 'partial', 'failed'],
+    templates: {
+      syntax: '{{path}}',
+      paths: ['title', 'body', 'message', 'hook', 'level', 'url', 'id', 'tags', 'payload.<any.path>'],
+      note: 'a path that resolves to nothing becomes an empty string',
+    },
   }
 }

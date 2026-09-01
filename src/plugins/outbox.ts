@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
-import type { Outcome, StoredEvent } from '../core/store.ts'
-import { describe } from '../core/types.ts'
+import type { StoredEvent } from '../core/store.ts'
+import { describe, outcomeOf, type DeliveryResult, type PassRecord } from '../core/types.ts'
 import type {} from '@deepseek-ai/cordis-plugin-timer'
 import type {} from '../core/events.ts'
 
@@ -41,7 +41,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.on('hook/submit', async (event) => {
     await ctx.store.append(event)
     void sweep()
-    return { id: event.id, queued: true as const }
+    return { id: event.id, queued: true }
   })
 
   async function sweep(): Promise<void> {
@@ -80,42 +80,38 @@ export function apply(ctx: Context, config: Config): void {
     }
 
     const failed = results.filter((result) => result.status === 'failed')
-    const sent = [...(await ctx.store.sentChannels(row.event.id)), ...results.filter((r) => r.status === 'sent').map((r) => r.channel)]
+    const earlier = await ctx.store.sentChannels(row.event.id)
 
-    if (failed.length === 0) {
-      await ctx.store.recordAttempt(row.event.id, results, {
-        state: 'done',
-        outcome: sent.length > 0 || results.length === 0 ? 'delivered' : 'partial',
-        attempts,
-        nextAttemptAt: null,
-      })
-      return
+    const record = settle(row, attempts, results, failed.length, earlier.length)
+    await ctx.store.recordAttempt(row.event.id, results, record)
+    // After the write, so a caller waiting for this event reads a store that
+    // already knows how the pass went.
+    ctx.emit('hook/processed', row.event.id, record, results)
+  }
+
+  /** What this pass leaves behind: settled, given up on, or due again later. */
+  function settle(
+    row: StoredEvent,
+    attempts: number,
+    results: DeliveryResult[],
+    failed: number,
+    earlier: number,
+  ): PassRecord {
+    if (failed === 0) {
+      return { state: 'done', outcome: outcomeOf(results, earlier), attempts, nextAttemptAt: null }
     }
-
     if (attempts >= config.attempts) {
-      const outcome: Outcome = sent.length > 0 ? 'partial' : 'failed'
       logger.warn(
-        `event ${row.event.id} gave up after ${attempts} pass(es); ${failed.length} channel(s) never took it`,
+        `event ${row.event.id} gave up after ${attempts} pass(es); ${failed} channel(s) never took it`,
       )
-      await ctx.store.recordAttempt(row.event.id, results, {
-        state: 'done',
-        outcome,
-        attempts,
-        nextAttemptAt: null,
-      })
-      return
+      return { state: 'done', outcome: outcomeOf(results, earlier), attempts, nextAttemptAt: null }
     }
-
     const delay = Math.min(config.baseDelayMs * 2 ** (attempts - 1), config.maxDelayMs)
     logger.warn(
-      `event ${row.event.id} pass ${attempts} left ${failed.length} channel(s) failing, next pass in ${Math.round(delay / 1000)}s`,
+      `event ${row.event.id} pass ${attempts} left ${failed} channel(s) failing, next pass in ${Math.round(delay / 1000)}s`,
     )
-    await ctx.store.recordAttempt(row.event.id, results, {
-      state: 'pending',
-      outcome: null,
-      attempts,
-      nextAttemptAt: Date.now() + delay,
-    })
+    // No outcome yet: it is not settled, it is waiting.
+    return { state: 'pending', outcome: null, attempts, nextAttemptAt: Date.now() + delay }
   }
 
   // Both are effects: the interval stops and the kickoff is cancelled on unload.

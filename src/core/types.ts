@@ -22,6 +22,12 @@ export interface RawHook {
   json?: Record<string, unknown>
   /** The body as text, always present (empty string for an empty body). */
   text: string
+  /**
+   * Set by whoever authorized this request. The ingest refuses a request that
+   * nobody vouched for, so losing the auth plugin closes the door instead of
+   * opening it.
+   */
+  authorized?: boolean
 }
 
 /** What came in, normalized. Produced by the `hook/receive` waterfall. */
@@ -72,10 +78,37 @@ export type DeliveryResult =
   | { channel: string; status: 'skipped'; reason: string }
   | { channel: string; status: 'failed'; error: string; attempts: number }
 
-/** What `ctx.hooks.submit` answers: taken by the outbox, or already delivered. */
-export type SubmitResult =
-  | { id: string; queued: true }
-  | { id: string; queued: false; results: DeliveryResult[] }
+/** How an event ended up, once nothing is owed any more. */
+export type Outcome = 'delivered' | 'partial' | 'failed'
+
+/** What one queue pass left behind. */
+export interface PassRecord {
+  state: 'pending' | 'done'
+  outcome: Outcome | null
+  /** Queue passes so far, not per-channel tries. */
+  attempts: number
+  nextAttemptAt: number | null
+}
+
+/** What `ctx.hooks.submit` answers. */
+export interface SubmitResult {
+  id: string
+  /** The queue still owes this event a pass. */
+  queued: boolean
+  /** What each channel said, as soon as anything was attempted. */
+  results?: DeliveryResult[]
+  /** Only when the caller waited and the queue got to it in time. */
+  pass?: PassRecord
+}
+
+/**
+ * What a hook call gets back. A `hook/answer` listener has the last word on it,
+ * so a plugin can add a field or answer with a status of its own.
+ */
+export interface HookAnswer {
+  status: number
+  body: Record<string, unknown>
+}
 
 /** Decide whether a channel wants this message. Every channel filters through this. */
 export function matches(matcher: Matcher | undefined, message: Message): boolean {
@@ -84,6 +117,19 @@ export function matches(matcher: Matcher | undefined, message: Message): boolean
   if (matcher.minLevel && rank(message.level) < rank(matcher.minLevel)) return false
   if (matcher.tags?.length && !matcher.tags.some((tag) => message.tags.includes(tag))) return false
   return true
+}
+
+/**
+ * How a set of results reads as one outcome. `alreadySent` counts the channels
+ * an earlier pass reached, because they decide between `partial` and `failed`
+ * just as much as this pass does. Nothing attempted at all is `null`.
+ */
+export function outcomeOf(results: DeliveryResult[], alreadySent = 0): Outcome {
+  const sent = alreadySent + results.filter((result) => result.status === 'sent').length
+  const failed = results.filter((result) => result.status === 'failed').length
+  if (failed > 0) return sent > 0 ? 'partial' : 'failed'
+  // No targets at all is not a failure: the hook deliberately goes nowhere.
+  return sent > 0 || results.length === 0 ? 'delivered' : 'partial'
 }
 
 /** Error message without the stack, safe to put in a response body or a log line. */

@@ -1,6 +1,6 @@
-import { createHash, timingSafeEqual } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
+import { constantTimeEquals } from '../core/routes.ts'
 import type {} from '../core/events.ts'
 
 export const name = 'auth-secret'
@@ -30,19 +30,15 @@ export function apply(ctx: Context, config: Config): void {
     'hook/receive',
     async (raw, next) => {
       if (config.hooks.length > 0 && !config.hooks.includes(raw.hook)) return next()
-      if (!equals(raw.headers[header] ?? '', config.secret)) {
+      if (!constantTimeEquals(raw.headers[header] ?? '', config.secret)) {
         logger.warn(`hook ${raw.hook}: missing or wrong ${header}`)
         return null
       }
+      // Vouch for the request, which is what `ingest-http` requires.
+      raw.authorized = true
       return next()
     },
     { prepend: true },
   )
 }
 
-/** Compare through a digest: constant time, and no throw on unequal length. */
-function equals(left: string, right: string): boolean {
-  const a = createHash('sha256').update(left).digest()
-  const b = createHash('sha256').update(right).digest()
-  return timingSafeEqual(a, b)
-}

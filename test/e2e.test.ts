@@ -51,16 +51,27 @@ async function waitFor<T>(probe: () => Promise<T | undefined>, tries = 60): Prom
   throw new Error('condition never held')
 }
 
-test('a valid webhook answers 202 and reaches the channel', async (t) => {
+test('a valid webhook waits for the queue and answers with the delivery', async (t) => {
   const { base, seen } = await stack(t)
   const response = await fetch(`${base}/hooks/deploy`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-hooky-secret': SECRET },
     body: JSON.stringify({ title: 'done', message: 'build 7', level: 'warning', tags: ['ota'] }),
   })
-  assert.equal(response.status, 202)
-  const body = (await response.json()) as { id: string; queued: boolean }
-  assert.equal(body.queued, true)
+  assert.equal(response.status, 200, 'the queue got to it inside the request')
+  const body = (await response.json()) as {
+    id: string
+    queued: boolean
+    state: string
+    outcome: string
+    attempts: number
+    results: { channel: string; status: string }[]
+  }
+  assert.equal(body.queued, false, 'nothing is owed any more')
+  assert.equal(body.state, 'done')
+  assert.equal(body.outcome, 'delivered')
+  assert.equal(body.attempts, 1)
+  assert.equal(body.results[0]?.status, 'sent')
 
   const message = await waitFor(async () => seen[0])
   assert.equal(message.title, 'done')

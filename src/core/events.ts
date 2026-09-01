@@ -1,4 +1,13 @@
-import type { DeliveryResult, HookEvent, Message, RawHook, SubmitResult } from './types.ts'
+import type { HookTarget } from './routes.ts'
+import type {
+  DeliveryResult,
+  HookAnswer,
+  HookEvent,
+  Message,
+  PassRecord,
+  RawHook,
+  SubmitResult,
+} from './types.ts'
 
 /**
  * The pipeline, as events. Importing this file for its side effect is what makes
@@ -30,6 +39,16 @@ declare module '@deepseek-ai/cordis' {
      */
     'notify/render'(event: HookEvent, next: () => Promise<Message>): Promise<Message>
     /**
+     * Which channels get this message, and with which mapping. Returning a list
+     * takes ownership of the routing; returning nothing leaves it to the channel
+     * matchers. An empty list means this hook deliberately goes nowhere.
+     *
+     * Dispatched with `bail`, which is synchronous, so a listener answers from
+     * memory and never from a query.
+     * @mode bail
+     */
+    'notify/target'(message: Message): HookTarget[] | undefined
+    /**
      * Wrap the delivery of one message to one channel. Rate limiting, dedupe and
      * quiet hours live here. Retries happen inside `next()`, so one message
      * costs one slot no matter how many attempts it takes.
@@ -51,5 +70,27 @@ declare module '@deepseek-ai/cordis' {
      * @mode emit
      */
     'notify/delivered'(results: DeliveryResult[], event: HookEvent): void
+    /**
+     * One queue pass is over and the store knows about it. This is where a
+     * caller waiting for its own event hears that the queue got to it, so it
+     * fires after the write and not, like `notify/delivered`, during the
+     * delivery itself.
+     * @mode emit
+     */
+    'hook/processed'(id: string, pass: PassRecord, results: DeliveryResult[]): void
+    /**
+     * The last word on what the caller gets back. The default is the ingest's
+     * own answer, so a listener that only adds something does
+     * `const base = await next(); return { ...base, body: { ...base.body, mine } }`.
+     *
+     * Only the accepted path comes past here. A call that was refused answers
+     * through `HookRejected` and never reaches this event.
+     * @mode waterfall
+     */
+    'hook/answer'(
+      answer: HookAnswer,
+      event: HookEvent,
+      next: () => Promise<HookAnswer>,
+    ): Promise<HookAnswer>
   }
 }

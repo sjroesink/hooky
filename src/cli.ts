@@ -6,7 +6,13 @@
  *
  *   HOOKY_URL     default http://127.0.0.1:3000
  *   HOOKY_SECRET  bearer token, same value the api plugin is configured with
+ *
+ * Both come from a `.env` in the working directory when they are not exported.
  */
+import { readFile } from 'node:fs/promises'
+import { loadEnv } from './core/env.ts'
+
+loadEnv()
 
 interface Command {
   use: string
@@ -20,6 +26,9 @@ type Flags = Record<string, string | boolean>
 const BASE = (process.env['HOOKY_URL'] ?? 'http://127.0.0.1:3000').replace(/\/+$/, '')
 const PREFIX = process.env['HOOKY_API_PREFIX'] ?? '/api'
 const SECRET = process.env['HOOKY_SECRET'] ?? ''
+
+/** What `--data` falls back to, for a preview or a run without one. */
+const SAMPLE_PAYLOAD = '{"title":"a test from the CLI","message":"a sample body","level":"warning","tags":["sample"]}'
 
 async function call(method: string, path: string, body?: unknown): Promise<unknown> {
   const response = await fetch(`${BASE}${PREFIX}${path}`, {
@@ -95,7 +104,7 @@ const commands: Record<string, Command> = {
     flags: {
       '--hook': 'only this hook',
       '--level': 'debug|info|warning|error|critical',
-      '--state': 'pending|done',
+      '--state': 'pending|done|rejected (a call no hook took)',
       '--outcome': 'delivered|partial|failed',
       '--channel': 'only calls with a record for this channel',
       '--search': 'substring of title or body',
@@ -148,6 +157,146 @@ const commands: Record<string, Command> = {
     use: 'registered channels and their delivery counts',
     async run() {
       return call('GET', '/channels')
+    },
+  },
+  'hooks list': {
+    use: 'defined hooks with their targets',
+    flags: { '--hash': 'include the secret hash, for a backup' },
+    async run(_argv, flags) {
+      return call('GET', `/hooks${flags['hash'] === true ? '?include=hash' : ''}`)
+    },
+  },
+  'hooks show': {
+    use: 'one hook, with its targets and mapping',
+    args: '<name>',
+    async run(argv) {
+      return call('GET', `/hooks/${need(argv[0], 'name')}`)
+    },
+  },
+  'hooks add': {
+    use: 'define a hook; the secret is printed once and stored as a hash',
+    args: '<name>',
+    flags: {
+      '--target': 'channel to deliver to, repeatable',
+      '--description': 'what this hook is for',
+      '--secret': 'use this secret instead of a generated one',
+      '--open': 'no secret at all; anyone who knows the name can post',
+      '--disabled': 'define it without accepting calls yet',
+    },
+    async run(argv, flags) {
+      return call('POST', '/hooks', {
+        name: need(argv[0], 'name'),
+        description: typeof flags['description'] === 'string' ? flags['description'] : undefined,
+        disabled: flags['disabled'] === true,
+        targets: many(flags['target']).map((channel) => ({ channel })),
+        secret:
+          flags['open'] === true
+            ? false
+            : typeof flags['secret'] === 'string'
+              ? flags['secret']
+              : undefined,
+      })
+    },
+  },
+  'hooks set': {
+    use: 'change the description, or turn a hook off without removing it',
+    args: '<name>',
+    flags: { '--description': 'new description', '--disabled': 'true or false' },
+    async run(argv, flags) {
+      const body: Record<string, unknown> = {}
+      if (typeof flags['description'] === 'string') body['description'] = flags['description']
+      if (flags['disabled'] !== undefined) body['disabled'] = flags['disabled'] !== 'false'
+      return call('PATCH', `/hooks/${need(argv[0], 'name')}`, body)
+    },
+  },
+  'hooks target': {
+    use: 'add a channel to a hook and say what that channel receives',
+    args: '<name> <channel>',
+    flags: {
+      '--title': 'template, e.g. "{{title}} on {{hook}}"',
+      '--body': 'template; {{message}} is the incoming body, \\n becomes a newline',
+      '--url': 'template for the click-through link',
+      '--level': 'override the level for this channel only',
+      '--tag': 'tag template, repeatable; replaces the tags',
+      '--min-level': 'only deliver to this channel from this level up',
+      '--only-tag': 'only deliver when the event carries this tag, repeatable',
+    },
+    async run(argv, flags) {
+      const map: Record<string, unknown> = {}
+      if (typeof flags['title'] === 'string') map['title'] = withNewlines(flags['title'])
+      if (typeof flags['body'] === 'string') map['body'] = withNewlines(flags['body'])
+      if (typeof flags['url'] === 'string') map['url'] = flags['url']
+      if (typeof flags['level'] === 'string') map['level'] = flags['level']
+      if (many(flags['tag']).length > 0) map['tags'] = many(flags['tag'])
+
+      const match: Record<string, unknown> = {}
+      if (typeof flags['min-level'] === 'string') match['minLevel'] = flags['min-level']
+      if (many(flags['only-tag']).length > 0) match['tags'] = many(flags['only-tag'])
+
+      return call('PUT', `/hooks/${need(argv[0], 'name')}/targets/${need(argv[1], 'channel')}`, {
+        ...(Object.keys(map).length > 0 ? { map } : {}),
+        ...(Object.keys(match).length > 0 ? { match } : {}),
+      })
+    },
+  },
+  'hooks untarget': {
+    use: 'remove one channel from a hook',
+    args: '<name> <channel>',
+    async run(argv) {
+      return call('DELETE', `/hooks/${need(argv[0], 'name')}/targets/${need(argv[1], 'channel')}`)
+    },
+  },
+  'hooks rotate': {
+    use: 'new secret for a hook; the old one stops working immediately',
+    args: '<name>',
+    async run(argv) {
+      return call('POST', `/hooks/${need(argv[0], 'name')}/rotate`)
+    },
+  },
+  'hooks preview': {
+    use: 'the message each channel would get for a payload, without sending it',
+    args: '<name>',
+    flags: { '--data': 'JSON payload; a sample is used when omitted' },
+    async run(argv, flags) {
+      const raw = typeof flags['data'] === 'string' ? flags['data'] : SAMPLE_PAYLOAD
+      return call('POST', `/hooks/${need(argv[0], 'name')}/preview`, JSON.parse(raw) as unknown)
+    },
+  },
+  'hooks run': {
+    use: 'send a payload to one channel of a hook for real, to see it arrive',
+    args: '<name> <channel>',
+    flags: { '--data': 'JSON payload; a sample is used when omitted' },
+    async run(argv, flags) {
+      const raw = typeof flags['data'] === 'string' ? flags['data'] : SAMPLE_PAYLOAD
+      const name = need(argv[0], 'name')
+      const channel = need(argv[1], 'channel')
+      return call('POST', `/hooks/${name}/targets/${channel}/run`, {
+        payload: JSON.parse(raw) as unknown,
+      })
+    },
+  },
+  'hooks remove': {
+    use: 'remove a hook; calls to that name answer 404 afterwards',
+    args: '<name>',
+    async run(argv) {
+      return call('DELETE', `/hooks/${need(argv[0], 'name')}`)
+    },
+  },
+  'hooks export': {
+    use: 'every definition as JSON, hashes included, for a backup or a second host',
+    async run() {
+      return call('GET', '/hooks?include=hash')
+    },
+  },
+  'hooks import': {
+    use: 'replace every definition with the contents of a hooks export',
+    args: '<file>',
+    async run(argv) {
+      const parsed: unknown = JSON.parse(await readFile(need(argv[0], 'file'), 'utf8'))
+      const hooks =
+        Array.isArray(parsed) ? parsed : (parsed as { hooks?: unknown[] } | null)?.hooks
+      if (!Array.isArray(hooks)) throw new Error('the file must be a hooks export or an array of hooks')
+      return call('PUT', '/hooks', { hooks })
     },
   },
   'plugins list': {
@@ -211,6 +360,15 @@ const commands: Record<string, Command> = {
   },
 }
 
+/** A flag that may be repeated, as a list. */
+function many(raw: Flags[string] | undefined): string[] {
+  if (raw === undefined || typeof raw === 'boolean') return []
+  return Array.isArray(raw) ? (raw as unknown as string[]) : [raw]
+}
+/** A shell cannot type a newline into a flag, so let the template say it. */
+function withNewlines(value: string): string {
+  return value.replaceAll('\\n', '\n').replaceAll('\\t', '\t')
+}
 function need(value: string | undefined, what: string): string {
   if (!value) throw new Error(`missing ${what}`)
   return value

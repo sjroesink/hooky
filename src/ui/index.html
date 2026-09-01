@@ -28,6 +28,8 @@
   }
 
   * { box-sizing: border-box; }
+  /* Author `display` rules below beat the user agent's `[hidden]` rule, so state it here. */
+  [hidden] { display: none !important; }
   html, body { height: 100%; }
   body {
     margin: 0; background: var(--bg); color: var(--fg);
@@ -43,6 +45,8 @@
   }
   button { cursor: pointer; }
   button:hover { border-color: var(--fg3); }
+  button:disabled { cursor: default; opacity: .45; }
+  button:disabled:hover { border-color: var(--line2); opacity: .45; }
   .mono { font-family: var(--mono); }
   .link {
     background: none; border: none; height: auto; padding: 0; color: var(--fg3);
@@ -53,6 +57,29 @@
   .primary { background: var(--fg); color: var(--panel); border-color: var(--fg); font: 600 12px/1 var(--mono); }
   .primary:hover { opacity: .88; border-color: var(--fg); }
   .danger { background: var(--failed); color: #fff; border-color: var(--failed); font: 600 12px/1 var(--mono); }
+
+  /* Icons: 13px, stroked in the button's own colour. A button that carries one
+     becomes a flex row, so the label sits beside the glyph instead of under it. */
+  .i {
+    width: 13px; height: 13px; flex: none; fill: none; stroke: currentColor;
+    stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
+  }
+  button:has(> .i) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  /* The small action next to a caption. Bordered, because an underlined word
+     reads as prose and gets skipped. */
+  .mini {
+    height: 22px; padding: 0 7px; letter-spacing: 0;
+    font: 11px/1 var(--mono); color: var(--fg2);
+    background: var(--panel); border: 1px solid var(--line2);
+  }
+  .mini:hover { color: var(--fg); border-color: var(--fg3); }
+  .mini .i { width: 12px; height: 12px; }
+  /* The one action in its block that people came to press. */
+  .mini-go { background: var(--fg); color: var(--panel); border-color: var(--fg); font-weight: 600; }
+  .mini-go:hover { color: var(--panel); border-color: var(--fg); opacity: .88; }
+  .filters .mini { height: 28px; }
+  .reveal .mini { background: none; color: inherit; border-color: currentColor; }
+  .reveal .mini:hover { color: inherit; border-color: currentColor; background: rgba(255, 255, 255, .06); }
 
   /* ---------- header ---------- */
   header {
@@ -106,10 +133,23 @@
   /* ---------- calls: list plus detail ---------- */
   main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .split { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr; }
-  .split[data-detail="true"] { grid-template-columns: 1fr 560px; }
+  .split {
+    flex: 1; min-height: 0; display: grid;
+    grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr);
+  }
+  .split[data-detail="true"] {
+    grid-template-columns: minmax(320px, 1fr) 5px var(--detail-w, 560px);
+  }
   .listwrap { min-width: 0; display: flex; flex-direction: column; min-height: 0; }
-  .split[data-detail="true"] .listwrap { border-right: 1px solid var(--line2); }
+
+  /* Drag to resize, double-click to reset, arrows when focused. */
+  .divider {
+    background: var(--line2); cursor: col-resize; position: relative;
+  }
+  .divider::after { content: ''; position: absolute; inset: 0 -4px; }
+  .divider:hover, .divider[data-drag="true"] { background: var(--fg3); }
+  .divider:focus-visible { outline: 2px solid var(--link); outline-offset: -1px; }
+  body[data-dragging="true"] { cursor: col-resize; user-select: none; }
 
   .rows { flex: 1; min-height: 0; overflow: auto; }
   .grid {
@@ -174,7 +214,7 @@
   .pager button:disabled { color: var(--fg3); cursor: default; }
 
   /* ---------- detail panel ---------- */
-  .detail { min-width: 0; display: flex; flex-direction: column; background: var(--panel); }
+  .detail { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--panel); }
   .detail-head {
     flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px;
     padding: 0 14px; height: 48px; background: var(--panel2); border-bottom: 1px solid var(--line);
@@ -182,6 +222,9 @@
   .detail-head .id { font: 11px/1 var(--mono); color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .detail-head .actions { display: flex; gap: 8px; flex: none; }
   .detail-body { flex: 1; min-height: 0; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+  /* Blocks keep their own height, so a short window makes the body scroll instead of
+     squeezing the fields and the payload frame into nothing. */
+  .detail-body > * { flex: none; }
 
   .banner {
     display: flex; align-items: center; gap: 10px; padding: 9px 11px;
@@ -230,6 +273,113 @@
   pre[data-wrap="false"] { white-space: pre; }
   pre[data-wrap="true"] { white-space: pre-wrap; overflow-wrap: anywhere; }
   .toggle { border: 1px solid var(--line2); padding: 2px 5px; margin-left: 4px; }
+
+  /* ---------- hooks ---------- */
+  .hooks .grid { grid-template-columns: 172px minmax(0, 1fr) 74px 62px 150px; }
+  .hooks .rows .row { border-left-width: 2px; }
+  .chip-map { border-color: var(--line2); }
+  .chip-missing { background: var(--failed-bg); border-color: var(--failed); color: var(--failed); }
+  .chip-missing .dot { background: var(--failed); }
+
+  .reveal {
+    display: flex; align-items: center; gap: 10px; padding: 9px 11px;
+    background: var(--pending-bg); border-left: 2px solid var(--pending); color: var(--pending);
+    font: 12px/1.4 var(--mono);
+  }
+  .reveal .value { flex: 1; overflow: hidden; text-overflow: ellipsis; user-select: all; }
+
+  .targets { border: 1px solid var(--line); display: flex; flex-direction: column; }
+  .target { border-bottom: 1px solid var(--line); }
+  .target:last-child { border-bottom: none; }
+  .target-line { display: flex; align-items: center; gap: 10px; padding: 8px 10px; font: 12px/1.3 var(--mono); }
+  .target-line .name { flex: none; width: 92px; overflow: hidden; text-overflow: ellipsis; }
+  .target-line .summary {
+    flex: 1; min-width: 0; color: var(--fg3); overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .target-line .buttons { display: flex; gap: 6px; flex: none; }
+  .target-line button { height: 22px; padding: 0 7px; font: 11px/1 var(--mono); }
+  .target.is-missing .name { color: var(--failed); }
+
+  .editor {
+    display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 7px 10px;
+    padding: 10px; background: var(--panel2); border-top: 1px solid var(--line);
+  }
+  .editor label { font: 11px/1.8 var(--mono); color: var(--fg3); }
+  .editor input, .editor select, .editor textarea {
+    width: 100%; font: 11px/1.5 var(--mono); background: var(--bg); height: 26px; padding: 0 7px;
+  }
+  .editor textarea { height: 62px; padding: 6px 7px; resize: vertical; }
+  .editor .row-buttons { grid-column: 2; display: flex; gap: 7px; margin-top: 2px; }
+  .editor .hint { grid-column: 2; font: 11px/1.5 var(--mono); color: var(--fg3); }
+  /* What the last run of this target did. There is no other record of it. */
+  .editor .run-result { grid-column: 2; display: flex; flex-direction: column; gap: 6px; }
+  .run-line { display: flex; align-items: center; gap: 8px; font: 11px/1.5 var(--mono); }
+  .run-line .note { flex: 1; min-width: 0; color: var(--fg3); overflow-wrap: anywhere; }
+  /* Labels the chip after it, so a red `error` cannot be read as a failure. */
+  .run-line .at { flex: none; color: var(--fg3); }
+  .run-sent {
+    padding: 7px 9px; background: var(--code); border: 1px solid var(--line2);
+    font: 11px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+
+  .form { display: flex; flex-direction: column; gap: 10px; }
+  .form .line { display: flex; flex-direction: column; gap: 5px; }
+  .form label { font: 11px/1 var(--mono); color: var(--fg3); }
+  .form input { height: 30px; font: 12px/1 var(--mono); background: var(--bg); }
+  .form .picker { display: flex; flex-wrap: wrap; gap: 8px; }
+  .form .picker label {
+    display: flex; align-items: center; gap: 6px; font: 12px/1 var(--mono); color: var(--fg2);
+    border: 1px solid var(--line2); padding: 6px 8px;
+  }
+  .form .buttons { display: flex; gap: 8px; margin-top: 2px; }
+
+  textarea {
+    font: 11px/1.55 var(--mono); background: var(--code); color: var(--fg);
+    border: 1px solid var(--line2); border-radius: 0; padding: 8px; width: 100%;
+    resize: vertical; min-height: 74px;
+  }
+
+  /* The {{path}} list. Fixed, not absolute: the panel scrolls, and a dropdown
+     clipped by the scroll frame is worse than one that closes when you scroll. */
+  .ac {
+    position: fixed; z-index: 30; width: 300px; max-height: 212px; overflow: auto;
+    background: var(--panel); border: 1px solid var(--fg3);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, .4);
+  }
+  .ac .head {
+    position: sticky; top: 0; padding: 6px 8px; background: var(--panel2);
+    border-bottom: 1px solid var(--line2);
+    font: 10px/1.4 var(--mono); letter-spacing: .07em; color: var(--fg3);
+  }
+  .ac button {
+    display: flex; width: 100%; gap: 10px; align-items: baseline; text-align: left;
+    background: none; border: none; border-bottom: 1px solid var(--line);
+    height: auto; padding: 6px 8px; font: 11px/1.3 var(--mono); color: var(--fg2);
+  }
+  .ac button:last-child { border-bottom: none; }
+  .ac button:hover, .ac button[aria-selected="true"] {
+    background: var(--sel); color: var(--fg); border-color: var(--line);
+  }
+  .ac .path { flex: none; }
+  .ac .sample {
+    margin-left: auto; min-width: 0; color: var(--fg3);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* A call nothing took, and the way out of it. */
+  .cell-hook.is-unknown, .fields dd .unknown { color: var(--failed); }
+  .callout {
+    display: flex; flex-direction: column; gap: 9px; padding: 11px 12px;
+    background: var(--panel2); border: 1px solid var(--line2);
+    font-size: 12px; line-height: 1.55; color: var(--fg2);
+  }
+  .callout .actions { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
+  .counters button {
+    background: none; border: none; padding: 0; height: auto; font: inherit;
+    color: var(--failed); text-decoration: underline; text-underline-offset: 3px;
+  }
+  .counters button:hover { border: none; opacity: .8; }
 
   /* ---------- empty states and token ---------- */
   .empty { padding: 44px 32px 48px; display: flex; flex-direction: column; gap: 12px; }
@@ -308,27 +458,55 @@
     .head { display: none; }
     .split[data-detail="true"] { grid-template-columns: 1fr; }
     .split[data-detail="true"] .listwrap { display: none; }
+    .divider { display: none; }
     .row, .listwrap[data-narrow="true"] .row {
       display: flex; flex-direction: column; gap: 7px; padding: 11px 12px;
     }
     .row .grid { display: contents; }
     .cell-meta { display: flex; align-items: center; gap: 8px; font: 11px/1 var(--mono); color: var(--fg3); }
     .cell-meta .cell-out { margin-left: auto; }
-    .plugins .grid { grid-template-columns: 1fr; gap: 6px; }
+    .plugins .grid, .hooks .grid { grid-template-columns: 1fr; gap: 6px; }
+    .editor { grid-template-columns: 1fr; }
+    .editor .row-buttons, .editor .hint, .editor .run-result { grid-column: 1; }
     .plugin .actions { justify-content: flex-start; }
     .detail { grid-column: 1 / -1; }
   }
-  .only-narrow { display: none; }
-  @media (max-width: 900px) { .only-narrow { display: flex; } .only-wide { display: none; } }
+  /* Last, and specific enough to beat `button:has(> .i)` above: an icon in a
+     narrow-only button must not drag it back onto the desktop layout. */
+  .only-narrow, button.only-narrow { display: none; }
+  @media (max-width: 900px) {
+    .only-narrow, button.only-narrow { display: flex; }
+    .only-wide, button.only-wide { display: none; }
+  }
 </style>
 </head>
 <body>
+
+<!-- One sprite for the whole page, drawn with `currentColor` so a button keeps its own colour.
+     No font, no request: `icon('play')` writes a <use> that points in here. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-play" viewBox="0 0 16 16"><path d="M5 3.4 12.6 8 5 12.6Z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.2v9.6M3.2 8h9.6"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 16 16"><path d="M2.8 4.6h10.4M6.4 4.6V3.1h3.2v1.5M4.4 4.6l.6 8.3h6l.6-8.3"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 16 16"><path d="M11.1 2.6l2.3 2.3-7.7 7.7-3 .7.7-3z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 16 16"><path d="M3 8.4l3.4 3.4L13.2 5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 16 16"><path d="M6 5.6h7.2v8.2H6z"/><path d="M10.4 5.6V3a.8.8 0 0 0-.8-.8H3.4a.8.8 0 0 0-.8.8v6.6a.8.8 0 0 0 .8.8H6"/></symbol>
+    <symbol id="i-rotate" viewBox="0 0 16 16"><path d="M13.3 8a5.3 5.3 0 1 1-1.55-3.75"/><path d="M13.5 2.8v2.8h-2.8"/></symbol>
+    <symbol id="i-key" viewBox="0 0 16 16"><circle cx="6" cy="6.1" r="2.7"/><path d="M7.95 8.05 13 13.1M10.3 10.4l1.5-1.5"/></symbol>
+    <symbol id="i-left" viewBox="0 0 16 16"><path d="M10 3.4 5.4 8 10 12.6"/></symbol>
+    <symbol id="i-right" viewBox="0 0 16 16"><path d="M6 3.4 10.6 8 6 12.6"/></symbol>
+    <symbol id="i-filter" viewBox="0 0 16 16"><path d="M2.6 3.6h10.8L9.2 8.8v4.2l-2.4-1.5V8.8z"/></symbol>
+  </defs>
+</svg>
 
 <header>
   <div class="brand">
     <span class="wordmark">hooky</span>
     <nav class="tabs">
       <button type="button" data-view="calls" aria-current="true">Calls</button>
+      <button type="button" data-view="hooks">Hooks</button>
       <button type="button" data-view="plugins">Plugins</button>
     </nav>
   </div>
@@ -342,11 +520,12 @@
       <input type="search" id="f-search" placeholder="search title and body…" autocomplete="off">
       <select id="f-hook" aria-label="hook"><option value="">hook: all</option></select>
       <select id="f-level" aria-label="level"><option value="">level: all</option></select>
-      <select id="f-outcome" aria-label="uitkomst">
+      <select id="f-outcome" aria-label="outcome">
         <option value="">outcome: all</option>
         <option value="delivered">delivered</option>
         <option value="partial">partial</option>
         <option value="failed">failed</option>
+        <option value="rejected">rejected</option>
       </select>
       <label class="check"><input type="checkbox" id="f-pending">pending only</label>
       <div class="segmented" id="f-since">
@@ -354,8 +533,12 @@
         <button type="button" data-since="24h" aria-pressed="false">24h</button>
         <button type="button" data-since="7d" aria-pressed="false">7d</button>
       </div>
-      <button type="button" class="link spacer" id="clear-filters" hidden>clear filters</button>
-      <button type="button" class="only-narrow" id="toggle-filters">filters</button>
+      <button type="button" class="mini spacer" id="clear-filters" hidden>
+        <svg class="i" aria-hidden="true"><use href="#i-x"/></svg>clear filters
+      </button>
+      <button type="button" class="only-narrow" id="toggle-filters">
+        <svg class="i" aria-hidden="true"><use href="#i-filter"/></svg>filters
+      </button>
     </div>
 
     <div class="split" id="split" data-detail="false">
@@ -364,7 +547,32 @@
         <div class="rows" id="rows"></div>
         <div class="pager" id="pager"></div>
       </div>
+      <div class="divider" id="divider" role="separator" aria-orientation="vertical"
+           aria-label="resize the detail panel" tabindex="0" hidden></div>
       <aside class="detail" id="detail" hidden></aside>
+    </div>
+  </section>
+
+  <!-- ============ hooks ============ -->
+  <section id="view-hooks" class="hooks" hidden>
+    <div class="filters">
+      <input type="search" id="h-search" placeholder="search hooks, targets…" autocomplete="off">
+      <button type="button" class="mini spacer" id="h-clear" hidden>
+        <svg class="i" aria-hidden="true"><use href="#i-x"/></svg>clear
+      </button>
+      <button type="button" class="primary" id="h-new">
+        <svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>define a hook
+      </button>
+    </div>
+
+    <div class="split" id="hook-split" data-detail="false">
+      <div class="listwrap">
+        <div class="head grid" id="hook-head"></div>
+        <div class="rows" id="hook-rows"></div>
+      </div>
+      <div class="divider" id="hook-divider" role="separator" aria-orientation="vertical"
+           aria-label="resize the hook panel" tabindex="0" hidden></div>
+      <aside class="detail" id="hook-detail" hidden></aside>
     </div>
   </section>
 
@@ -415,6 +623,17 @@ const state = {
   events: [],
   stats: null,
   plugins: [],
+  hooks: [],          // hook definitions, the layer between a call and a channel
+  channels: [],       // channel names registered right now
+  hookSel: null,      // selected hook name, or NEW for the create form
+  hookFilter: '',
+  revealed: null,     // { name, secret }: shown once, after a create or a rotate
+  openTarget: null,   // channel whose editor is open
+  payload: null,      // the body in the payload box: what a target's run sends
+  rotateHook: null,   // hook waiting for a rotate confirmation
+  hookDraft: null,    // { name } for the create form, filled from a rejected call
+  ac: null,           // the open {{path}} list: { field, start, caret, items, index }
+  dropHook: null,     // hook waiting for a delete confirmation
   detail: null,       // the opened event, with payload
   wrap: false,        // payload line wrapping
   confirm: null,      // plugin id waiting for a disable confirmation
@@ -427,6 +646,8 @@ const state = {
 const $ = (id) => document.getElementById(id)
 const esc = (value) =>
   String(value ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+/** One glyph from the sprite at the top of the document. */
+const icon = (name) => `<svg class="i" aria-hidden="true"><use href="#i-${name}"/></svg>`
 
 const stamp = new Intl.DateTimeFormat('en-CA', {
   year: 'numeric', month: '2-digit', day: '2-digit',
@@ -473,7 +694,7 @@ async function api(path, options = {}) {
     ...options,
     headers: { authorization: `Bearer ${token()}`, 'content-type': 'application/json', ...options.headers },
   })
-  if (response.status === 401) throw new Unauthorized('401 — token rejected by the server')
+  if (response.status === 401) throw new Unauthorized('401, the server rejected this token')
   if (!response.ok) throw new Error((await response.text()).slice(0, 300))
   return response.json()
 }
@@ -481,14 +702,25 @@ async function api(path, options = {}) {
 /* ---------------- status vocabulary ---------------- */
 
 function outcomeOf(event) {
+  if (event.state === 'rejected') return 'REJECTED'
   return event.state === 'pending' ? 'PENDING' : String(event.outcome ?? 'OPEN').toUpperCase()
 }
 
 function outcomeColor(outcome) {
   if (outcome === 'DELIVERED') return 'var(--sent)'
-  if (outcome === 'FAILED') return 'var(--failed)'
+  if (outcome === 'FAILED' || outcome === 'REJECTED') return 'var(--failed)'
   if (outcome === 'PARTIAL' || outcome === 'PENDING') return 'var(--pending)'
   return 'var(--fg3)'
+}
+
+/** For the narrow column, where four characters is all there is. */
+function shortOutcome(outcome) {
+  return outcome === 'REJECTED' ? 'REJ' : outcome.slice(0, 4)
+}
+
+/** Hook names that have a definition right now, from /stats. */
+function defined(name) {
+  return (state.stats?.hooks_defined ?? []).includes(name)
 }
 
 function chip(delivery) {
@@ -507,10 +739,17 @@ function renderCounters() {
   const parts = []
   if (stats.pending > 0) parts.push(`<span class="pending">${stats.pending} pending</span>`)
   if (failed > 0) parts.push(`<span class="failed">${failed} failed</span>`)
+  if ((stats.rejected ?? 0) > 0) {
+    parts.push(
+      `<button type="button" id="show-rejected" title="calls for a hook that is not defined">${stats.rejected} rejected</button>`,
+    )
+  }
   parts.push(`<span>${stats.events} calls</span>`)
   parts.push('<span class="sep"></span>')
   parts.push(
-    `<span class="refresh">refresh ${TICK_SECONDS}s · ${state.detail ? 'paused' : state.countdown + 's'}</span>`,
+    state.view === 'hooks'
+      ? '<span class="refresh">no auto refresh here</span>'
+      : `<span class="refresh">refresh ${TICK_SECONDS}s · ${state.detail ? 'paused' : state.countdown + 's'}</span>`,
   )
   $('counters').innerHTML = parts.join('')
 }
@@ -523,8 +762,8 @@ function activeFilters() {
   if (search) active.push({ key: 'search', label: search })
   if (hook) active.push({ key: 'hook', label: `hook: ${hook}` })
   if (level) active.push({ key: 'level', label: `level: ${level}` })
-  if (outcome) active.push({ key: 'outcome', label: `uitkomst: ${outcome}` })
-  if (pending) active.push({ key: 'pending', label: 'alleen pending' })
+  if (outcome) active.push({ key: 'outcome', label: `outcome: ${outcome}` })
+  if (pending) active.push({ key: 'pending', label: 'pending only' })
   if (since) active.push({ key: 'since', label: SINCE_LABEL[since] })
   return active
 }
@@ -556,15 +795,19 @@ function rowWide(event) {
         <span class="cell-time only-wide">${fmt(event.receivedAt)}</span>
         <span class="cell-meta only-narrow">
           <span>${fmtClock(event.receivedAt)}</span><span>${esc(event.hook)}</span>
-          <span class="cell-out" style="color:${outcomeColor(outcome)}">${outcome}</span>
+          <span class="cell-out" style="color:${outcomeColor(outcome)}">${shortOutcome(outcome)}</span>
         </span>
-        <span class="cell-hook only-wide">${esc(event.hook)}</span>
+        <span class="cell-hook only-wide${event.state === 'rejected' ? ' is-unknown' : ''}">${esc(event.hook)}</span>
         <span class="level level-${esc(event.level)} only-wide">${esc(event.level)}</span>
         <span class="cell-title">
           <span class="t">${esc(event.title)}</span>
           ${event.replayOf ? '<span class="replay-tag">REPLAY</span>' : ''}
         </span>
-        <span class="chips">${event.deliveries.map(chip).join('')}</span>
+        <span class="chips">${
+          event.state === 'rejected'
+            ? `<span class="chip chip-failed" title="${esc(event.rejection?.reason ?? 'rejected')}"><span class="dot"></span>${event.rejection?.status ?? 'rejected'}</span>`
+            : event.deliveries.map(chip).join('')
+        }</span>
         <span class="cell-out only-wide" style="color:${outcomeColor(outcome)}">${outcome}</span>
       </span>
     </button>`
@@ -583,7 +826,7 @@ function rowNarrow(event) {
         <span class="cell-hook">${esc(event.hook)}</span>
         <span class="cell-title"><span class="t">${esc(event.title)}</span></span>
         <span class="dots">${dots}
-          <span class="out" style="color:${outcomeColor(outcome)}">${outcome.slice(0, 4)}</span>
+          <span class="out" style="color:${outcomeColor(outcome)}">${shortOutcome(outcome)}</span>
         </span>
       </span>
     </button>`
@@ -611,7 +854,7 @@ function emptyFresh() {
         and this list fills itself within ${TICK_SECONDS} seconds.
       </p>
       <div style="margin-top:4px">
-        <div class="caption">FIRST CALL<button type="button" class="link" data-copy="curl">copy</button></div>
+        <div class="caption">FIRST CALL<button type="button" class="mini" data-copy="curl">${icon('copy')}copy</button></div>
         <pre data-wrap="false" id="curl">${esc(curl)}</pre>
       </div>
       <div class="mono" style="font-size:11px; color:var(--fg3)">
@@ -645,8 +888,8 @@ function renderPager() {
   $('pager').innerHTML = `
     <span class="count">${state.total === 0 ? 'no results' : `${from}–${to} of ${state.total} · offset ${state.offset}`}</span>
     <span class="buttons">
-      <button type="button" id="prev" ${state.offset === 0 ? 'disabled' : ''}>previous</button>
-      <button type="button" id="next" ${to >= state.total ? 'disabled' : ''}>next</button>
+      <button type="button" id="prev" ${state.offset === 0 ? 'disabled' : ''}>${icon('left')}previous</button>
+      <button type="button" id="next" ${to >= state.total ? 'disabled' : ''}>next${icon('right')}</button>
     </span>`
 }
 
@@ -655,6 +898,7 @@ function renderPager() {
 function renderDetail() {
   const panel = $('detail')
   $('split').dataset.detail = state.detail ? 'true' : 'false'
+  $('divider').hidden = !state.detail
   panel.hidden = !state.detail
   if (!state.detail) {
     panel.innerHTML = ''
@@ -665,23 +909,31 @@ function renderDetail() {
   const outcome = outcomeOf(event)
   const payload = JSON.stringify(event.payload, null, 2)
   const size = new TextEncoder().encode(payload).length
+  const stuck = event.state === 'rejected' && !defined(event.hook)
 
   panel.innerHTML = `
     <div class="detail-head">
       <span class="id">${esc(event.id)}</span>
       <span class="actions">
-        <button type="button" class="primary" id="do-replay" style="height:28px">replay</button>
+        <button type="button" class="primary" id="do-replay" style="height:28px"
+                ${stuck ? 'disabled title="there is still no hook by this name to replay it into"' : ''}>${icon('rotate')}replay</button>
         <button type="button" id="close-detail" class="mono" style="font-size:12px">esc</button>
       </span>
     </div>
     <div class="detail-body">
       ${banner(event, outcome)}
+      ${defineCallout(event)}
       <div>
         <h2>${esc(event.title)}</h2>
         ${event.body ? `<div class="body-text">${esc(event.body)}</div>` : ''}
       </div>
       <dl class="fields">
-        <dt>hook</dt><dd>${esc(event.hook)}</dd>
+        <dt>hook</dt>
+        <dd>${
+          event.state === 'rejected' && !defined(event.hook)
+            ? `<span class="unknown">${esc(event.hook)} · not defined</span>`
+            : `<button type="button" class="link" data-jump-hook="${esc(event.hook)}" title="open this hook's definition">${esc(event.hook)}</button>`
+        }</dd>
         <dt>level</dt><dd><span class="level-${esc(event.level)}" style="padding:0">${esc(event.level)}</span></dd>
         <dt>receivedAt</dt><dd>${fmt(event.receivedAt)}</dd>
         <dt>tags</dt><dd>${event.tags.length ? esc(event.tags.join(' · ')) : '<span style="color:var(--fg3)">none</span>'}</dd>
@@ -690,14 +942,22 @@ function renderDetail() {
       </dl>
       <div>
         <div class="caption">DELIVERIES · ${event.deliveries.length}</div>
-        ${event.deliveries.length ? `<div class="deliveries">${event.deliveries.map(delivery).join('')}</div>` : '<div class="mono" style="font-size:12px; color:var(--fg3)">nothing delivered yet</div>'}
+        ${
+          event.deliveries.length
+            ? `<div class="deliveries">${event.deliveries.map(delivery).join('')}</div>`
+            : `<div class="mono" style="font-size:12px; color:var(--fg3)">${
+                event.state === 'rejected'
+                  ? 'none, and there never will be: this call never entered the pipeline'
+                  : 'nothing delivered yet'
+              }</div>`
+        }
       </div>
       <div>
         <div class="caption">
           PAYLOAD · ${(size / 1024).toFixed(1)} KB
           <span style="display:flex; gap:12px; align-items:center">
             <button type="button" class="link" id="toggle-wrap">wrap lines<span class="toggle">${state.wrap ? 'on' : 'off'}</span></button>
-            <button type="button" class="link" data-copy="payload">copy</button>
+            <button type="button" class="mini" data-copy="payload">${icon('copy')}copy</button>
           </span>
         </div>
         <pre id="payload" data-wrap="${state.wrap}">${esc(payload)}</pre>
@@ -706,6 +966,10 @@ function renderDetail() {
 }
 
 function banner(event, outcome) {
+  if (event.state === 'rejected') {
+    const rejection = event.rejection ?? {}
+    return `<div class="banner banner-failed">rejected · ${esc(rejection.status ?? '')} ${esc(rejection.reason ?? 'no hook took this call')}</div>`
+  }
   if (event.state === 'pending') {
     const next = event.nextAttemptAt
       ? ` · next attempt ${fmtClock(event.nextAttemptAt)} (${relative(event.nextAttemptAt)})`
@@ -719,6 +983,33 @@ function banner(event, outcome) {
     return `<div class="banner banner-pending">partial · some channels never took it</div>`
   }
   return `<div class="banner banner-sent">delivered · ${event.attempts} attempt(s)</div>`
+}
+
+/**
+ * The way out of a rejected call: define the hook it was aiming for. The payload
+ * travels along, so the templates you write next can use its fields.
+ */
+function defineCallout(event) {
+  if (event.state !== 'rejected') return ''
+  if (defined(event.hook)) {
+    return `
+      <div class="callout">
+        <span>There is a hook named <span class="mono">${esc(event.hook)}</span> now. Replay this call
+        to run it through the definition as it stands.</span>
+      </div>`
+  }
+  return `
+    <div class="callout">
+      <span>Nothing took this call. Define a hook named <span class="mono">${esc(event.hook)}</span>
+      and this body lands in its payload box, so the mapping editor can complete the
+      <span class="mono">{{paths}}</span> that are actually in it and a target's
+      <span class="mono">run</span> sends this very body.</span>
+      <span class="actions">
+        <button type="button" class="primary" data-define-hook="${esc(event.hook)}">
+          ${icon('plus')}define a hook for "${esc(event.hook)}"
+        </button>
+      </span>
+    </div>`
 }
 
 function delivery(item) {
@@ -748,7 +1039,7 @@ function plugin(item) {
 
   let control
   if (item.state === 'failed') {
-    control = `<button type="button" data-remount="${esc(item.id)}" class="mono" style="font-size:12px">remount</button>`
+    control = `<button type="button" data-remount="${esc(item.id)}" class="mono" style="font-size:12px">${icon('rotate')}remount</button>`
   } else if (item.critical) {
     control = `<span class="switch" data-on="false" style="color:var(--fg3)"><span class="track"><span class="knob"></span></span>locked</span>`
   } else {
@@ -812,8 +1103,11 @@ function query() {
   if (search) params.set('search', search)
   if (hook) params.set('hook', hook)
   if (level) params.set('level', level)
-  if (outcome) params.set('outcome', outcome)
   if (pending) params.set('state', 'pending')
+  // 'rejected' is a state, not an outcome, but for a reader it belongs in the
+  // same dropdown: it says nothing was delivered.
+  if (outcome === 'rejected') params.set('state', 'rejected')
+  else if (outcome) params.set('outcome', outcome)
   if (since) params.set('since', since)
   return params
 }
@@ -833,11 +1127,17 @@ async function load() {
     let plugins = state.plugins
     let detail = state.detail
 
+    let hooks = state.hooks
+    let channels = state.channels
+
     if (state.view === 'calls') {
       const data = await api(`/events?${query()}`)
       events = data.events
       total = data.total
       if (detail) detail = await api(`/events/${detail.id}`)
+    } else if (state.view === 'hooks') {
+      hooks = (await api('/hooks')).hooks
+      channels = (await api('/channels')).channels
     } else {
       plugins = (await api('/plugins')).plugins
     }
@@ -847,6 +1147,8 @@ async function load() {
     state.events = events
     state.total = total
     state.plugins = plugins
+    state.hooks = hooks
+    state.channels = channels
     state.detail = detail
     state.needsToken = false
     render()
@@ -869,6 +1171,7 @@ function render() {
   const showToken = state.needsToken
   $('view-token').hidden = !showToken
   $('view-calls').hidden = showToken || state.view !== 'calls'
+  $('view-hooks').hidden = showToken || state.view !== 'hooks'
   $('view-plugins').hidden = showToken || state.view !== 'plugins'
   document.querySelectorAll('.tabs button').forEach((button) => {
     button.setAttribute('aria-current', String(button.dataset.view === state.view))
@@ -884,9 +1187,388 @@ function render() {
     renderRows()
     renderPager()
     renderDetail()
+  } else if (state.view === 'hooks') {
+    renderHooks()
   } else {
     renderPlugins()
   }
+}
+
+/* ---------------- rendering: hooks ---------------- */
+
+const NEW = '\u0000new'
+
+function renderHooks() {
+  $('hook-head').innerHTML =
+    '<div>NAME</div><div>TARGETS</div><div>SECRET</div><div>STATE</div><div class="right">UPDATED</div>'
+
+  const term = state.hookFilter.trim().toLowerCase()
+  const rows = state.hooks.filter(
+    (hook) =>
+      !term ||
+      hook.name.toLowerCase().includes(term) ||
+      (hook.description ?? '').toLowerCase().includes(term) ||
+      hook.targets.some((target) => target.channel.toLowerCase().includes(term)),
+  )
+
+  if ($('h-search') !== document.activeElement) $('h-search').value = state.hookFilter
+  $('h-clear').hidden = state.hookFilter === ''
+
+  $('hook-rows').innerHTML =
+    state.hooks.length === 0 ? emptyHooks() : rows.length === 0 ? emptyHookFilter() : rows.map(hookRow).join('')
+
+  const open = state.hookSel !== null
+  $('hook-split').dataset.detail = String(open)
+  $('hook-divider').hidden = !open
+  renderHookDetail()
+}
+
+function emptyHooks() {
+  return `
+    <div class="empty">
+      <h2>No hooks defined</h2>
+      <p>
+        Every call answers 404 until a hook exists with that name. A hook carries its own secret and
+        the list of channels it delivers to, and per channel you say what the message looks like.
+      </p>
+      <div class="suggestions"><button type="button" data-new="1">${icon('plus')}define a hook</button></div>
+    </div>`
+}
+
+function emptyHookFilter() {
+  return `
+    <div class="empty">
+      <h2>No hook matches</h2>
+      <p>${state.hooks.length} defined, 0 matching "${esc(state.hookFilter)}".</p>
+      <div class="suggestions"><button type="button" id="h-clear-2">clear the search</button></div>
+    </div>`
+}
+
+function targetChip(target) {
+  const mapped = target.map ? ' · map' : ''
+  const cls = target.missing ? 'chip chip-missing' : target.map ? 'chip chip-map' : 'chip'
+  const note = target.missing ? ' · missing' : mapped
+  return `<span class="${cls}" title="${esc(targetSummary(target))}"><span class="dot"></span>${esc(target.channel)}${note}</span>`
+}
+
+function hookRow(hook) {
+  const selected = state.hookSel === hook.name
+  const targets = hook.targets.length
+    ? hook.targets.map(targetChip).join('')
+    : '<span class="chip"><span class="dot"></span>no targets</span>'
+  return `
+    <button type="button" class="row" data-hook="${esc(hook.name)}" aria-selected="${selected}">
+      <span class="grid">
+        <span class="cell-hook">${esc(hook.name)}</span>
+        <span class="chips">${targets}</span>
+        <span class="cell-time">${hook.hasSecret ? 'own' : 'open'}</span>
+        <span class="cell-time" style="color:${hook.disabled ? 'var(--fg3)' : 'var(--sent)'}">${hook.disabled ? 'off' : 'on'}</span>
+        <span class="cell-time right">${fmt(hook.updatedAt)}</span>
+      </span>
+    </button>`
+}
+
+/** One line describing a target, for the row and the title attribute. */
+function targetSummary(target) {
+  const parts = []
+  if (target.map?.title) parts.push(`title ${target.map.title}`)
+  if (target.map?.body) parts.push(`body ${target.map.body.replace(/\n/g, ' ')}`)
+  if (target.map?.url) parts.push(`url ${target.map.url}`)
+  if (target.map?.level) parts.push(`level ${target.map.level}`)
+  if (target.map?.tags?.length) parts.push(`tags ${target.map.tags.join(', ')}`)
+  if (target.match?.minLevel) parts.push(`from ${target.match.minLevel} up`)
+  if (target.match?.tags?.length) parts.push(`only tagged ${target.match.tags.join(', ')}`)
+  return parts.length > 0 ? parts.join(' · ') : 'the message as it came in'
+}
+
+function renderHookDetail() {
+  acClose()               // the list points at fields that are about to be replaced
+  const panel = $('hook-detail')
+  panel.hidden = state.hookSel === null
+  if (state.hookSel === null) {
+    panel.innerHTML = ''
+    return
+  }
+  if (state.hookSel === NEW) {
+    panel.innerHTML = newHookForm()
+    return
+  }
+
+  const hook = state.hooks.find((row) => row.name === state.hookSel)
+  if (!hook) {
+    state.hookSel = null
+    panel.hidden = true
+    panel.innerHTML = ''
+    return
+  }
+
+  const free = state.channels.filter((channel) => !hook.targets.some((target) => target.channel === channel))
+  panel.innerHTML = `
+    <div class="detail-head">
+      <span class="id">${esc(hook.name)}${hook.disabled ? ' · off' : ''}</span>
+      <span class="actions">
+        <button type="button" class="switch" data-on="${!hook.disabled}" id="h-toggle">
+          <span class="track"><span class="knob"></span></span>${hook.disabled ? 'off' : 'on'}
+        </button>
+        <button type="button" id="h-rotate" class="mono" style="font-size:12px">${icon('rotate')}rotate</button>
+        <button type="button" id="h-close" class="mono" style="font-size:12px">esc</button>
+      </span>
+    </div>
+    <div class="detail-body">
+      ${state.revealed?.name === hook.name ? reveal(state.revealed.secret) : ''}
+      ${
+        state.rotateHook === hook.name
+          ? `<div class="strip strip-confirm">
+               <span>A new secret for ${esc(hook.name)} kills the old one at once. Every caller still
+               sending the old one gets a 401 until you paste in the new one, which is shown here
+               only right after the rotate.</span>
+               <span class="buttons">
+                 <button type="button" class="danger" id="h-rotate-yes">${icon('rotate')}rotate</button>
+                 <button type="button" id="h-rotate-no">${icon('x')}cancel</button>
+               </span>
+             </div>`
+          : ''
+      }
+      <div>
+        <div class="caption">DESCRIPTION</div>
+        <input id="h-description" value="${esc(hook.description ?? '')}"
+               placeholder="what this hook is for" style="width:100%;height:28px;font:12px/1 var(--mono)">
+      </div>
+
+      <div>
+        <div class="caption">PAYLOAD</div>
+        <textarea id="h-payload" spellcheck="false">${esc(state.payload ?? samplePayload())}</textarea>
+        <div class="hint" style="font:11px/1.6 var(--mono);color:var(--fg3);margin-top:6px">
+          The body a caller would POST. The editors below complete their
+          <span class="mono">{{paths}}</span> from it, and a target's
+          <span class="mono">run</span> sends it to that one channel for real.
+        </div>
+      </div>
+
+      <div>
+        <div class="caption">TARGETS · ${hook.targets.length}</div>
+        <div class="targets">
+          ${hook.targets.map((target) => targetBlock(hook, target)).join('') || '<div class="target"><div class="target-line"><span class="summary">no targets yet, so a call to this hook goes nowhere</span></div></div>'}
+        </div>
+        <div class="target-line" style="padding:9px 0 0">
+          <select id="h-channel" style="height:26px;font:11px/1 var(--mono);flex:1;min-width:0">
+            ${free.map((channel) => `<option value="${esc(channel)}">${esc(channel)}</option>`).join('')}
+            ${free.length === 0 ? '<option value="">every registered channel is already a target</option>' : ''}
+          </select>
+          <span class="buttons">
+            <button type="button" id="h-add-target" ${free.length === 0 ? 'disabled' : ''}>${icon('plus')}add</button>
+          </span>
+        </div>
+      </div>
+
+      <div>
+        <div class="caption">
+          CALL IT
+          <button type="button" class="mini" data-copy-curl="1">${icon('copy')}copy</button>
+        </div>
+        <pre id="h-curl" data-wrap="true">${esc(curlFor(hook))}</pre>
+      </div>
+
+      <dl class="fields">
+        <dt>secret</dt><dd>${hook.hasSecret ? 'own, stored as a hash' : 'none, this hook is open'}</dd>
+        <dt>created</dt><dd>${fmt(hook.createdAt)}</dd>
+        <dt>updated</dt><dd>${fmt(hook.updatedAt)}</dd>
+      </dl>
+
+      <div>
+        ${
+          state.dropHook === hook.name
+            ? `<div class="strip strip-confirm">
+                 <span>Removing ${esc(hook.name)} closes the endpoint: calls to that name answer 404. The events it already produced stay in the history.</span>
+                 <span class="buttons">
+                   <button type="button" class="danger" id="h-drop-yes">${icon('trash')}remove</button>
+                   <button type="button" id="h-drop-no">${icon('x')}cancel</button>
+                 </span>
+               </div>`
+            : `<button type="button" id="h-drop" class="mono" style="font-size:12px">${icon('trash')}remove this hook</button>`
+        }
+      </div>
+    </div>`
+}
+
+function reveal(secret) {
+  return `
+    <div class="reveal">
+      <span>secret</span>
+      <span class="value mono">${esc(secret)}</span>
+      <button type="button" class="mini" data-copy-secret="${esc(secret)}">${icon('copy')}copy</button>
+      <span>shown once</span>
+    </div>`
+}
+
+function targetBlock(hook, target) {
+  const open = state.openTarget === target.channel
+  return `
+    <div class="target${target.missing ? ' is-missing' : ''}">
+      <div class="target-line">
+        <span class="name">${esc(target.channel)}</span>
+        <span class="summary">${esc(target.missing ? 'no channel of that name is registered' : targetSummary(target))}</span>
+        <span class="buttons">
+          <button type="button" data-edit="${esc(target.channel)}">${open ? icon('x') + 'close' : icon('pencil') + 'edit'}</button>
+          <button type="button" data-remove-target="${esc(target.channel)}">${icon('trash')}remove</button>
+        </span>
+      </div>
+      ${open ? targetEditor(target) : ''}
+    </div>`
+}
+
+function targetEditor(target) {
+  const map = target.map ?? {}
+  const match = target.match ?? {}
+  const levels = ['', 'debug', 'info', 'warning', 'error', 'critical']
+  const option = (value, selected, label) =>
+    `<option value="${esc(value)}"${value === selected ? ' selected' : ''}>${esc(label ?? value ?? '')}</option>`
+  return `
+    <div class="editor" data-channel="${esc(target.channel)}">
+      <label for="e-title">title</label>
+      <input id="e-title" data-tpl="1" autocomplete="off" value="${esc(map.title ?? '')}" placeholder="{{title}}">
+      <label for="e-body">body</label>
+      <textarea id="e-body" data-tpl="1" spellcheck="false" placeholder="{{message}}">${esc(map.body ?? '')}</textarea>
+      <label for="e-url">url</label>
+      <input id="e-url" data-tpl="1" autocomplete="off" value="${esc(map.url ?? '')}" placeholder="{{url}}">
+      <label for="e-level">level</label>
+      <select id="e-level">${levels.map((level) => option(level, map.level ?? '', level === '' ? 'as it came in' : level)).join('')}</select>
+      <label for="e-tags">tags</label>
+      <input id="e-tags" data-tpl="1" autocomplete="off" value="${esc((map.tags ?? []).join(', '))}" placeholder="leave empty to keep the event's tags">
+      <label for="e-min">from level</label>
+      <select id="e-min">${levels.map((level) => option(level, match.minLevel ?? '', level === '' ? 'everything' : level)).join('')}</select>
+      <label for="e-only">only tagged</label>
+      <input id="e-only" value="${esc((match.tags ?? []).join(', '))}" placeholder="deliver only when the event carries one of these">
+      <div class="hint">
+        Type <span class="mono">{{</span> in title, body, url or tags for the paths in the payload
+        above, <span class="mono">{{payload.buildId}}</span> included. Level is a fixed override, not
+        a template. <span class="mono">run</span> sends the payload above to
+        <span class="mono">${esc(target.channel)}</span> for real, with these fields as they stand,
+        saved or not.
+      </div>
+      <div class="row-buttons">
+        <button type="button" class="primary" data-save="${esc(target.channel)}">${icon('check')}save</button>
+        <button type="button" data-edit="${esc(target.channel)}">${icon('x')}cancel</button>
+        <button type="button" class="mini mini-go" style="height:28px;margin-left:auto"
+                data-run="${esc(target.channel)}">${icon('play')}run</button>
+      </div>
+      <div class="run-result" hidden></div>
+    </div>`
+}
+
+/**
+ * What the last run did. This is the only record of it: a run is not an event,
+ * so it never shows up under Calls.
+ */
+function runResult(run) {
+  const status = run.skipped ? 'skipped' : run.result.status
+  const note =
+    run.skipped ??
+    (run.result.status === 'failed'
+      ? run.result.error
+      : run.result.status === 'skipped'
+        ? run.result.reason
+        : `${run.result.attempts} attempt${run.result.attempts === 1 ? '' : 's'}`)
+  const sent = run.message
+  return `
+    <div class="run-line">
+      <span class="status-${esc(status)}">${esc(status)}</span>
+      <span class="note">${esc(note)}</span>
+      ${sent ? `<span class="at">level</span><span class="level level-${esc(sent.level)}">${esc(sent.level)}</span>` : ''}
+    </div>
+    ${sent ? `<div class="run-sent">${esc(sent.title)}${sent.body ? '\n' + esc(sent.body) : ''}</div>` : ''}
+    ${sent?.url ? `<div class="run-line"><span class="note">url ${esc(sent.url)}</span></div>` : ''}
+    ${sent?.tags?.length ? `<div class="run-line"><span class="note">tags ${esc(sent.tags.join(', '))}</span></div>` : ''}`
+}
+
+function samplePayload() {
+  return JSON.stringify(
+    { title: 'api is down', message: '3 checks failed in a row', level: 'error', buildId: 991 },
+    null,
+    2,
+  )
+}
+
+function curlFor(hook) {
+  const origin = location.origin
+  const header = hook.hasSecret ? `  -H "x-hooky-secret: $HOOK_SECRET" \\\n` : ''
+  return (
+    `curl -X POST ${origin}/hooks/${hook.name} \\\n` +
+    header +
+    `  -H 'content-type: application/json' \\\n` +
+    `  -d '{"title":"hello","message":"from curl","level":"warning"}'`
+  )
+}
+
+function newHookForm() {
+  const draft = state.hookDraft
+  return `
+    <div class="detail-head">
+      <span class="id">${draft ? `a hook for ${esc(draft.name)}` : 'a new hook'}</span>
+      <span class="actions">
+        <button type="button" id="h-close" class="mono" style="font-size:12px">esc</button>
+      </span>
+    </div>
+    <div class="detail-body">
+      ${
+        draft
+          ? `<div class="callout">
+               <span>From the call that was turned away. The name and the payload below come from it,
+               so the mapping you write next can complete the <span class="mono">{{paths}}</span> it
+               really contains.</span>
+             </div>`
+          : ''
+      }
+      <div class="form">
+        <div class="line">
+          <label for="n-name">name</label>
+          <input id="n-name" placeholder="urgent" autocomplete="off" value="${esc(draft?.name ?? '')}">
+          <span class="hint" style="font:11px/1.5 var(--mono);color:var(--fg3)">
+            The path segment callers use: letters, digits, dot, dash, underscore. It becomes
+            <span class="mono">POST ${esc(location.origin)}/hooks/&lt;name&gt;</span>.
+          </span>
+        </div>
+        <div class="line">
+          <label for="n-description">description</label>
+          <input id="n-description" placeholder="what this hook is for" autocomplete="off">
+        </div>
+        <div class="line">
+          <label>targets</label>
+          <div class="picker">
+            ${
+              state.channels.length === 0
+                ? '<span class="hint" style="font:11px/1.5 var(--mono);color:var(--fg3)">No channel is registered, so there is nothing to add yet.</span>'
+                : state.channels
+                    .map(
+                      (channel) =>
+                        `<label><input type="checkbox" name="n-target" value="${esc(channel)}">${esc(channel)}</label>`,
+                    )
+                    .join('')
+            }
+          </div>
+        </div>
+        <div class="line">
+          <label><input type="checkbox" id="n-open"> no secret, anyone who knows the name can post</label>
+        </div>
+        <div class="line">
+          <label for="n-payload">payload to map from</label>
+          <textarea id="n-payload" spellcheck="false">${esc(state.payload ?? samplePayload())}</textarea>
+          <span class="hint" style="font:11px/1.5 var(--mono);color:var(--fg3)">
+            Not sent anywhere yet. It stays in the payload box of this hook, where it feeds the
+            <span class="mono">{{path}}</span> list in the mapping editor and whatever a target's
+            <span class="mono">run</span> sends.
+          </span>
+        </div>
+        <div class="buttons">
+          <button type="button" class="primary" id="n-create">${icon('plus')}define it</button>
+          <button type="button" id="h-close">${icon('x')}cancel</button>
+        </div>
+        <span class="hint" style="font:11px/1.6 var(--mono);color:var(--fg3)">
+          A secret is generated and shown once, right here. It is stored as a SHA-256, so this is the
+          only moment you can copy it. Lost means rotate.
+        </span>
+      </div>
+    </div>`
 }
 
 function renderHookOptions() {
@@ -954,6 +1636,10 @@ document.querySelectorAll('.tabs button').forEach((button) => {
   button.addEventListener('click', () => {
     state.view = button.dataset.view
     state.confirm = null
+    // Leaving a view drops what only made sense inside it.
+    state.openTarget = null
+    state.dropHook = null
+    state.rotateHook = null
     void load()
   })
 })
@@ -1032,6 +1718,16 @@ $('detail').addEventListener('click', async (event) => {
   }
   const jump = event.target.closest('button[data-open]')
   if (jump) return void open(jump.dataset.open)
+  const define = event.target.closest('button[data-define-hook]')
+  if (define) return openHookDraft(define.dataset.defineHook, state.detail?.payload)
+  const toHook = event.target.closest('button[data-jump-hook]')
+  if (toHook) {
+    state.view = 'hooks'
+    state.hookSel = toHook.dataset.jumpHook
+    state.openTarget = null
+    void load()
+    return
+  }
   if (event.target.closest('#do-replay')) {
     const id = state.detail.id
     try {
@@ -1088,6 +1784,342 @@ $('plugin-rows').addEventListener('click', async (event) => {
   }
 })
 
+/* ---------------- hooks: events ---------------- */
+
+$('h-search').addEventListener(
+  'input',
+  debounce(() => {
+    state.hookFilter = $('h-search').value
+    renderHooks()
+  }, 200),
+)
+
+$('h-clear').addEventListener('click', () => {
+  state.hookFilter = ''
+  renderHooks()
+})
+
+$('h-new').addEventListener('click', () => selectHook(NEW))
+
+$('counters').addEventListener('click', (event) => {
+  if (!event.target.closest('#show-rejected')) return
+  state.view = 'calls'
+  state.detail = null
+  state.filters = { search: '', hook: '', level: '', outcome: 'rejected', pending: false, since: '' }
+  state.offset = 0
+  void load()
+})
+
+$('hook-rows').addEventListener('click', (event) => {
+  if (event.target.closest('button[data-new]')) return selectHook(NEW)
+  if (event.target.closest('#h-clear-2')) {
+    state.hookFilter = ''
+    return renderHooks()
+  }
+  const row = event.target.closest('button[data-hook]')
+  if (row) selectHook(row.dataset.hook)
+})
+
+function selectHook(name) {
+  state.hookSel = state.hookSel === name ? null : name
+  state.openTarget = null
+  state.dropHook = null
+  state.rotateHook = null
+  state.payload = null
+  state.hookDraft = null
+  renderHooks()
+}
+
+/**
+ * From a call nobody took to the form that fixes it: same panel as "define a
+ * hook", with the name and the payload of that call already in it.
+ */
+function openHookDraft(name, payload) {
+  state.view = 'hooks'
+  state.hookSel = NEW
+  state.hookDraft = { name }
+  state.payload = JSON.stringify(payload ?? {}, null, 2)
+  state.openTarget = null
+  state.dropHook = null
+  state.rotateHook = null
+  void load()
+}
+
+$('hook-detail').addEventListener('click', async (event) => {
+  // Clicking into a field moves the caret too.
+  if (event.target.dataset?.tpl !== undefined) acClose()
+  const hook = state.hooks.find((row) => row.name === state.hookSel)
+
+  if (event.target.closest('#h-close')) {
+    state.hookSel = null
+    state.revealed = null
+    return renderHooks()
+  }
+  if (event.target.closest('#n-create')) return void createHook()
+
+  const secret = event.target.closest('button[data-copy-secret]')
+  if (secret) return void copy(secret.dataset.copySecret)
+  if (event.target.closest('button[data-copy-curl]')) return void copy($('h-curl').textContent)
+
+  if (!hook) return
+
+  if (event.target.closest('#h-toggle')) {
+    return void hookPatch(hook.name, { disabled: !hook.disabled }, hook.disabled ? 'on' : 'off')
+  }
+  if (event.target.closest('#h-rotate')) {
+    // A rotate cannot be undone: the old secret is gone the moment it lands.
+    state.rotateHook = hook.name
+    state.dropHook = null
+    return renderHookDetail()
+  }
+  if (event.target.closest('#h-rotate-no')) {
+    state.rotateHook = null
+    return renderHookDetail()
+  }
+  if (event.target.closest('#h-rotate-yes')) {
+    state.rotateHook = null
+    try {
+      const rotated = await api(`/hooks/${hook.name}/rotate`, { method: 'POST' })
+      state.revealed = { name: hook.name, secret: rotated.secret }
+      toast('rotated, the old secret is dead')
+      await load()
+    } catch (error) {
+      toast(error.message)
+    }
+    return
+  }
+  if (event.target.closest('#h-drop')) {
+    state.dropHook = hook.name
+    state.rotateHook = null
+    return renderHookDetail()
+  }
+  if (event.target.closest('#h-drop-no')) {
+    state.dropHook = null
+    return renderHookDetail()
+  }
+  if (event.target.closest('#h-drop-yes')) {
+    state.dropHook = null
+    try {
+      await api(`/hooks/${hook.name}`, { method: 'DELETE' })
+      toast(`${hook.name} removed`)
+      state.hookSel = null
+    } catch (error) {
+      toast(error.message)
+    }
+    await load()
+    return
+  }
+  if (event.target.closest('#h-add-target')) {
+    const channel = $('h-channel').value
+    if (!channel) return
+    try {
+      await api(`/hooks/${hook.name}/targets/${channel}`, { method: 'PUT', body: '{}' })
+      state.openTarget = channel
+      toast(`${channel} added as a target`)
+    } catch (error) {
+      toast(error.message)
+    }
+    await load()
+    return
+  }
+  const edit = event.target.closest('button[data-edit]')
+  if (edit) {
+    state.openTarget = state.openTarget === edit.dataset.edit ? null : edit.dataset.edit
+    return renderHookDetail()
+  }
+  const drop = event.target.closest('button[data-remove-target]')
+  if (drop) {
+    try {
+      await api(`/hooks/${hook.name}/targets/${drop.dataset.removeTarget}`, { method: 'DELETE' })
+      toast(`${drop.dataset.removeTarget} removed as a target`)
+      if (state.openTarget === drop.dataset.removeTarget) state.openTarget = null
+    } catch (error) {
+      toast(error.message)
+    }
+    await load()
+    return
+  }
+  const save = event.target.closest('button[data-save]')
+  if (save) return void saveTarget(hook, save.dataset.save)
+  const go = event.target.closest('button[data-run]')
+  if (go) return void runTarget(hook, go.dataset.run, go)
+})
+
+/** A description is saved when the field loses focus or takes Enter. */
+$('hook-detail').addEventListener('change', (event) => {
+  if (event.target.id !== 'h-description') return
+  const hook = state.hooks.find((row) => row.name === state.hookSel)
+  if (!hook) return
+  const value = event.target.value.trim()
+  if (value === (hook.description ?? '')) return
+  void hookPatch(hook.name, { description: value }, 'description saved')
+})
+
+$('hook-detail').addEventListener('keydown', (event) => {
+  if (state.ac && event.target.dataset.tpl !== undefined) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      return acMove(1)
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      return acMove(-1)
+    }
+    if (event.key === 'Enter' || event.key === 'Tab') {
+      event.preventDefault()
+      return acAccept()
+    }
+    if (event.key === 'Escape') {
+      // Not the panel's Escape: close the list and leave the panel open.
+      event.preventDefault()
+      event.stopPropagation()
+      return acClose()
+    }
+    // The caret is about to move on its own; what is open no longer matches it.
+    if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) acClose()
+  }
+  if (event.key === 'Enter' && event.target.id === 'h-description') event.target.blur()
+  if (event.key === 'Enter' && event.target.id === 'n-name') void createHook()
+})
+
+/** Keep what is typed in the preview box across a re-render. */
+$('hook-detail').addEventListener('input', (event) => {
+  if (event.target.id === 'h-payload' || event.target.id === 'n-payload') {
+    state.payload = event.target.value
+    return
+  }
+  if (event.target.dataset.tpl !== undefined) acRefresh(event.target)
+})
+
+// The list is anchored to a field's box, so a scroll would leave it behind.
+$('hook-detail').addEventListener('scroll', () => acClose(), true)
+$('hook-detail').addEventListener('focusout', (event) => {
+  if (event.target.dataset?.tpl !== undefined) acClose()
+})
+
+async function hookPatch(name, body, done) {
+  try {
+    await api(`/hooks/${name}`, { method: 'PATCH', body: JSON.stringify(body) })
+    toast(`${name} ${done}`)
+  } catch (error) {
+    toast(error.message)
+  }
+  await load()
+}
+
+async function createHook() {
+  const name = $('n-name').value.trim()
+  if (!name) return toast('a hook needs a name')
+  const targets = [...document.querySelectorAll('input[name="n-target"]:checked')].map((box) => ({
+    channel: box.value,
+  }))
+  // Keep the payload as this hook's preview, so the editor can complete from it.
+  state.payload = $('n-payload')?.value ?? state.payload
+  const body = {
+    name,
+    description: $('n-description').value.trim() || undefined,
+    targets,
+    ...($('n-open').checked ? { secret: false } : {}),
+  }
+  try {
+    const created = await api('/hooks', { method: 'POST', body: JSON.stringify(body) })
+    state.revealed = created.secret ? { name, secret: created.secret } : null
+    state.hookSel = name
+    state.hookDraft = null
+    state.openTarget = null
+    toast(created.secret ? 'defined, the secret is shown once' : 'defined without a secret')
+  } catch (error) {
+    toast(error.message)
+    return
+  }
+  await load()
+}
+
+/** The mapping and the filter as the open editor stands, saved or not. */
+function editorTarget() {
+  const list = (value) =>
+    value
+      .split(',')
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+
+  const map = {}
+  if ($('e-title').value.trim()) map.title = $('e-title').value.trim()
+  if ($('e-body').value.trim()) map.body = $('e-body').value
+  if ($('e-url').value.trim()) map.url = $('e-url').value.trim()
+  if ($('e-level').value) map.level = $('e-level').value
+  if (list($('e-tags').value).length > 0) map.tags = list($('e-tags').value)
+
+  const match = {}
+  if ($('e-min').value) match.minLevel = $('e-min').value
+  if (list($('e-only').value).length > 0) match.tags = list($('e-only').value)
+
+  return { map, match }
+}
+
+/** Reads the editor as it stands and replaces that one target. */
+async function saveTarget(hook, channel) {
+  const { map, match } = editorTarget()
+  try {
+    await api(`/hooks/${hook.name}/targets/${channel}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        ...(Object.keys(map).length > 0 ? { map } : {}),
+        ...(Object.keys(match).length > 0 ? { match } : {}),
+      }),
+    })
+    state.openTarget = null
+    toast(`${channel} saved`)
+  } catch (error) {
+    toast(error.message)
+    return
+  }
+  await load()
+}
+
+/**
+ * The real thing: the payload above, the fields in the editor as they stand,
+ * out over that one channel. So a Telegram target makes Telegram buzz.
+ *
+ * The answer is written into the editor instead of re-rendering the panel: a
+ * re-render would read the target back from the server and throw away the very
+ * fields that produced this run.
+ */
+async function runTarget(hook, channel, button) {
+  let payload
+  try {
+    payload = JSON.parse($('h-payload').value || '{}')
+  } catch {
+    toast('that payload is not JSON')
+    return
+  }
+  button.disabled = true
+  try {
+    const run = await api(`/hooks/${hook.name}/targets/${channel}/run`, {
+      method: 'POST',
+      body: JSON.stringify({ payload, ...editorTarget() }),
+    })
+    // Only one editor is open at a time, so there is only one box to fill.
+    const box = document.querySelector('#hook-detail .editor .run-result')
+    if (box) {
+      box.innerHTML = runResult(run)
+      box.hidden = false
+    }
+    toast(runToast(channel, run))
+  } catch (error) {
+    toast(error.message)
+  } finally {
+    button.disabled = false
+  }
+}
+
+function runToast(channel, run) {
+  if (run.skipped) return `${channel} skipped: ${run.skipped}`
+  if (run.result.status === 'sent') return `sent to ${channel}`
+  if (run.result.status === 'skipped') return `${channel} skipped: ${run.result.reason}`
+  return `${channel} failed: ${run.result.error}`
+}
+
 async function patch(id, body) {
   try {
     await api(`/plugins/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
@@ -1113,8 +2145,225 @@ function close() {
 }
 
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && state.detail) close()
+  if (event.key !== 'Escape') return
+  if (state.view === 'hooks' && state.hookSel !== null) {
+    state.hookSel = null
+    state.revealed = null
+    renderHooks()
+    return
+  }
+  if (state.detail) close()
 })
+
+/* ---------------- the {{path}} completer ---------------- */
+
+/** What is being typed right before the caret, if it is a placeholder. */
+const AC_OPEN = /\{\{\s*([\w.$-]*)$/
+
+/**
+ * Everything a template can reach: the fixed event fields, plus every path in
+ * the payload sitting in the preview box. That box is the whole point of
+ * prefilling it from a rejected call.
+ */
+function templatePaths() {
+  const items = [
+    { path: 'title', sample: 'the event title' },
+    { path: 'message', sample: 'the event body' },
+    { path: 'hook', sample: 'the hook name' },
+    { path: 'level', sample: 'debug up to critical' },
+    { path: 'url', sample: 'click-through link' },
+    { path: 'tags', sample: 'joined with a comma' },
+    { path: 'id', sample: 'event id' },
+    { path: 'receivedAt', sample: 'epoch ms' },
+  ]
+  let payload
+  try {
+    payload = JSON.parse(state.payload ?? samplePayload())
+  } catch {
+    return items          // half-typed JSON: the fixed names still work
+  }
+  if (payload !== null && typeof payload === 'object') {
+    items.push({ path: 'payload', sample: 'the whole body as JSON' })
+    walkPaths(payload, 'payload', items, 0)
+  }
+  return items
+}
+
+function walkPaths(value, prefix, items, depth) {
+  if (items.length > 90 || depth > 4 || value === null || typeof value !== 'object') return
+  const entries = Array.isArray(value)
+    ? value.slice(0, 12).map((item, index) => [String(index), item])
+    : Object.entries(value).slice(0, 40)
+  for (const [key, item] of entries) {
+    const path = `${prefix}.${key}`
+    items.push({ path, sample: sampleOf(item) })
+    walkPaths(item, path, items, depth + 1)
+  }
+}
+
+function sampleOf(value) {
+  if (value === null) return 'null'
+  if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? '' : 's'}`
+  if (typeof value === 'object') return '{…}'
+  return String(value).slice(0, 46)
+}
+
+/** Open, refilter or close, depending on what sits before the caret. */
+function acRefresh(field) {
+  const caret = field.selectionStart ?? field.value.length
+  const typed = AC_OPEN.exec(field.value.slice(0, caret))
+  if (!typed) return acClose()
+  const term = typed[1].toLowerCase()
+  const items = templatePaths()
+    .filter((item) => item.path.toLowerCase().includes(term))
+    .slice(0, 40)
+  if (items.length === 0) return acClose()
+  state.ac = { field: field.id, start: caret - typed[0].length, caret, items, index: 0, term: typed[1] }
+  acDraw(field)
+}
+
+function acDraw(field) {
+  let list = $('ac')
+  if (!list) {
+    list = document.createElement('div')
+    list.id = 'ac'
+    list.className = 'ac'
+    // mousedown, not click: a click would blur the field first, and
+    // preventDefault here keeps the caret where it was.
+    list.addEventListener('mousedown', (event) => {
+      const item = event.target.closest('button[data-ac]')
+      if (!item) return
+      event.preventDefault()
+      acAccept(Number(item.dataset.ac))
+    })
+    document.body.append(list)
+  }
+  const { items, index, term } = state.ac
+  list.innerHTML =
+    `<div class="head">${term ? `matching "${esc(term)}"` : 'PATHS IN THE PAYLOAD ABOVE'}</div>` +
+    items
+      .map(
+        (item, at) => `
+          <button type="button" data-ac="${at}" aria-selected="${at === index}">
+            <span class="path">${esc(item.path)}</span><span class="sample">${esc(item.sample)}</span>
+          </button>`,
+      )
+      .join('')
+
+  const box = field.getBoundingClientRect()
+  const below = window.innerHeight - box.bottom
+  list.style.left = `${Math.max(8, Math.min(box.left, window.innerWidth - 308))}px`
+  if (below < 150 && box.top > below) {
+    list.style.top = ''
+    list.style.bottom = `${window.innerHeight - box.top + 4}px`
+  } else {
+    list.style.bottom = ''
+    list.style.top = `${box.bottom + 4}px`
+  }
+  acScroll()
+}
+
+function acScroll() {
+  document.querySelector('#ac button[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
+}
+
+function acMove(step) {
+  const { items, index } = state.ac
+  state.ac.index = (index + step + items.length) % items.length
+  document.querySelectorAll('#ac button').forEach((button, at) => {
+    button.setAttribute('aria-selected', String(at === state.ac.index))
+  })
+  acScroll()
+}
+
+/** Replace the half-typed `{{` with the whole placeholder, caret after it. */
+function acAccept(at) {
+  const { field, start, caret, items, index } = state.ac
+  const input = $(field)
+  const item = items[at ?? index]
+  acClose()
+  if (!input || !item) return
+  const insert = `{{${item.path}}}`
+  input.value = input.value.slice(0, start) + insert + input.value.slice(caret)
+  input.focus()
+  const after = start + insert.length
+  input.setSelectionRange(after, after)
+}
+
+function acClose() {
+  state.ac = null
+  $('ac')?.remove()
+}
+
+/* ---------------- the splitter ---------------- */
+
+const DETAIL_MIN = 380
+const DETAIL_DEFAULT = 560
+const DETAIL_KEY = 'hooky.detailWidth'
+
+const SPLITS = ['split', 'hook-split']
+
+/**
+ * Clamps so the list keeps 420px and the panel keeps DETAIL_MIN, and applies the
+ * result to both views: one drag, one width, wherever you are.
+ */
+function setDetailWidth(px, splitId = 'split') {
+  const split = $(splitId)
+  const room = Math.max(DETAIL_MIN, split.clientWidth - 420)
+  const width = Math.round(Math.min(Math.max(px, DETAIL_MIN), room))
+  for (const id of SPLITS) $(id).style.setProperty('--detail-w', `${width}px`)
+  return width
+}
+
+function storeDetailWidth(width) {
+  try {
+    localStorage.setItem(DETAIL_KEY, String(width))
+  } catch {
+    // Private window or blocked storage: the width just does not survive a reload.
+  }
+}
+
+function installSplitter(splitId, dividerId, detailId) {
+  const divider = $(dividerId)
+  const current = () => $(detailId).getBoundingClientRect().width || DETAIL_DEFAULT
+
+  divider.addEventListener('pointerdown', (event) => {
+    const right = $(splitId).getBoundingClientRect().right
+    divider.setPointerCapture(event.pointerId)
+    divider.dataset.drag = 'true'
+    document.body.dataset.dragging = 'true'
+
+    const move = (moved) => setDetailWidth(right - moved.clientX, splitId)
+    const stop = (ended) => {
+      storeDetailWidth(setDetailWidth(right - ended.clientX, splitId))
+      divider.removeEventListener('pointermove', move)
+      divider.removeEventListener('pointerup', stop)
+      divider.removeEventListener('pointercancel', stop)
+      delete divider.dataset.drag
+      delete document.body.dataset.dragging
+    }
+
+    divider.addEventListener('pointermove', move)
+    divider.addEventListener('pointerup', stop)
+    divider.addEventListener('pointercancel', stop)
+    event.preventDefault()
+  })
+
+  divider.addEventListener('dblclick', () => {
+    storeDetailWidth(setDetailWidth(DETAIL_DEFAULT, splitId))
+  })
+
+  divider.addEventListener('keydown', (event) => {
+    const step = event.shiftKey ? 40 : 12
+    if (event.key === 'ArrowLeft') storeDetailWidth(setDetailWidth(current() + step, splitId))
+    else if (event.key === 'ArrowRight') storeDetailWidth(setDetailWidth(current() - step, splitId))
+    else return
+    event.preventDefault()
+  })
+}
+
+installSplitter('split', 'divider', 'detail')
+installSplitter('hook-split', 'hook-divider', 'hook-detail')
 
 $('token-connect').addEventListener('click', connect)
 $('token-input').addEventListener('keydown', (event) => {
@@ -1134,6 +2383,9 @@ function connect() {
 
 setInterval(() => {
   if (state.needsToken) return
+  // Hook definitions do not change by themselves, and a poll here would land in
+  // the middle of an edit. That view refreshes when you act on it.
+  if (state.view === 'hooks') return
   state.countdown -= 1
   if (state.countdown > 0) {
     renderCounters()
@@ -1152,6 +2404,13 @@ setInterval(() => {
   }
   void load()
 }, 1000)
+
+try {
+  const stored = Number(localStorage.getItem(DETAIL_KEY))
+  if (stored) setDetailWidth(stored)
+} catch {
+  // Nothing stored, or storage is blocked: the CSS default of 560px stands.
+}
 
 if (!token()) {
   state.needsToken = true

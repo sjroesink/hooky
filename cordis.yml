@@ -19,6 +19,8 @@
   name: ./src/plugins/hooks.ts
 - id: ingest-http
   name: ./src/plugins/ingest-http.ts
+  config:
+    waitMs: 10000
 - id: store
   name: ./src/plugins/store-sqlite.ts
   config:
@@ -30,14 +32,30 @@
     attempts: 8
     baseDelayMs: 30000
     maxDelayMs: 3600000
+- id: routes
+  name: ./src/plugins/hook-routes.ts
+  config:
+    always:
+      - console
+    seedSecret: !!js process.env.HOOKY_SECRET
+    seed:
+      - name: urgent
+        description: Wakes me up. Telegram and ntfy both.
+        targets:
+          - channel: telegram
+          - channel: ntfy
+      - name: notice
+        description: Worth knowing, not worth a push on two devices.
+        targets:
+          - channel: telegram
 - id: api
   name: ./src/plugins/api.ts
   config:
     secret: !!js process.env.HOOKY_SECRET
 - id: ui
   name: ./src/plugins/ui.ts
-- id: auth
-  name: ./src/plugins/auth-secret.ts
+- id: skill
+  name: ./src/plugins/skill.ts
   config:
     secret: !!js process.env.HOOKY_SECRET
 - id: rate-limit
@@ -66,5 +84,3 @@
     server: !!js process.env.NTFY_SERVER ?? 'https://ntfy.sh'
     topic: !!js process.env.NTFY_TOPIC
     token: !!js process.env.NTFY_TOKEN ?? ''
-    match:
-      minLevel: warning

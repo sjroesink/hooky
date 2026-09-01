@@ -1,4 +1,6 @@
 import { Service, type Context } from '@deepseek-ai/cordis'
+import { shape } from './render.ts'
+import type { HookTarget } from './routes.ts'
 import { describe, matches, type Channel, type DeliveryResult, type Message } from './types.ts'
 import type {} from './events.ts'
 
@@ -43,15 +45,50 @@ export class NotifyService extends Service {
   }
 
   /**
-   * Fan out to every channel whose matcher accepts the message, minus the ones
-   * a previous outbox pass already reached. One failing channel does not affect
-   * the others.
+   * Fan out, minus the channels a previous outbox pass already reached. One
+   * failing channel does not affect the others.
+   *
+   * A `notify/target` listener decides where the message goes and shapes it per
+   * channel. With no listener the channel matchers decide, which is what keeps
+   * this service usable without the routes plugin.
    */
   async deliver(message: Message, skipChannels: string[] = []): Promise<DeliveryResult[]> {
-    const targets = [...this.registry.values()].filter(
-      (channel) => !skipChannels.includes(channel.name) && matches(channel.match, message),
+    const routed = this.ctx.bail('notify/target', message)
+    const targets = (routed ?? this.byMatcher(message)).filter(
+      (target) => !skipChannels.includes(target.channel),
     )
-    return Promise.all(targets.map((channel) => this.wrap(message, channel)))
+    return Promise.all(targets.map((target) => this.deliverTo(message, target)))
+  }
+
+  /** The fallback routing: every channel that accepts the message itself. */
+  private byMatcher(message: Message): HookTarget[] {
+    return [...this.registry.values()]
+      .filter((channel) => matches(channel.match, message))
+      .map((channel) => ({ channel: channel.name }))
+  }
+
+  /**
+   * One target, routing skipped. `deliver` uses it per target, and a per-target
+   * run from the UI uses it to put one message through the same rate limit,
+   * retry and channel a real call goes through.
+   *
+   * A target names a channel that may not exist, for instance because its
+   * plugin is unloaded. That is a visible skip rather than silence, so the UI
+   * shows why nothing arrived.
+   */
+  async deliverTo(message: Message, target: HookTarget): Promise<DeliveryResult> {
+    const channel = this.registry.get(target.channel)
+    if (!channel) {
+      this.ctx.logger('notify').warn(
+        `event ${message.event.id} targets channel '${target.channel}', which is not registered`,
+      )
+      return {
+        channel: target.channel,
+        status: 'skipped',
+        reason: `no channel named '${target.channel}' is registered`,
+      }
+    }
+    return this.wrap(shape(message, target.map), channel)
   }
 
   private async wrap(message: Message, channel: Channel): Promise<DeliveryResult> {
