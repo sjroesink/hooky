@@ -1,7 +1,14 @@
 import { Service, type Context } from '@deepseek-ai/cordis'
 import { shape } from './render.ts'
 import type { HookTarget } from './routes.ts'
-import { describe, matches, type Channel, type DeliveryResult, type Message } from './types.ts'
+import {
+  describe,
+  matches,
+  type Channel,
+  type ChannelSetting,
+  type DeliveryResult,
+  type Message,
+} from './types.ts'
 import type {} from './events.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -42,6 +49,19 @@ export class NotifyService extends Service {
   /** Names of the channels currently registered, in registration order. */
   get names(): string[] {
     return [...this.registry.keys()]
+  }
+
+  /**
+   * What each channel accepts per target, for the channels that accept anything.
+   * The API hands this to the UI so a target editor can ask for a Teams webhook
+   * url without this file, or that form, knowing what Teams is.
+   */
+  get settings(): Record<string, ChannelSetting[]> {
+    const out: Record<string, ChannelSetting[]> = {}
+    for (const [name, channel] of this.registry) {
+      if (channel.settings?.length) out[name] = channel.settings
+    }
+    return out
   }
 
   /**
@@ -88,13 +108,17 @@ export class NotifyService extends Service {
         reason: `no channel named '${target.channel}' is registered`,
       }
     }
-    return this.wrap(shape(message, target.map), channel)
+    return this.wrap(shape(message, target.map), channel, target.settings)
   }
 
-  private async wrap(message: Message, channel: Channel): Promise<DeliveryResult> {
+  private async wrap(
+    message: Message,
+    channel: Channel,
+    settings?: Record<string, string>,
+  ): Promise<DeliveryResult> {
     try {
       return await this.ctx.waterfall('notify/deliver', message, channel.name, () =>
-        this.send(message, channel),
+        this.send(message, channel, settings),
       )
     } catch (error) {
       // A listener threw instead of returning a result.
@@ -107,9 +131,13 @@ export class NotifyService extends Service {
    * while a `notify/retry` listener says to. The loop lives here so the policy
    * plugin does not have to call `next()` more than once.
    */
-  private async send(message: Message, channel: Channel): Promise<DeliveryResult> {
+  private async send(
+    message: Message,
+    channel: Channel,
+    settings?: Record<string, string>,
+  ): Promise<DeliveryResult> {
     for (let attempt = 1; ; attempt++) {
-      const error = await this.attempt(message, channel)
+      const error = await this.attempt(message, channel, settings)
       if (!error) return { channel: channel.name, status: 'sent', attempts: attempt }
       const again = await this.ctx.serial('notify/retry', channel.name, error, attempt)
       if (again !== true) {
@@ -119,7 +147,11 @@ export class NotifyService extends Service {
   }
 
   /** One attempt. Returns the error message, or undefined when it went out. */
-  private async attempt(message: Message, channel: Channel): Promise<string | undefined> {
+  private async attempt(
+    message: Message,
+    channel: Channel,
+    settings?: Record<string, string>,
+  ): Promise<string | undefined> {
     const controller = new AbortController()
     let release: (() => unknown) | undefined
     try {
@@ -129,7 +161,7 @@ export class NotifyService extends Service {
       // Fiber already gone. Send anyway rather than dropping the notification.
     }
     try {
-      await channel.send(message, controller.signal)
+      await channel.send(message, controller.signal, settings)
       return undefined
     } catch (error) {
       return describe(error)

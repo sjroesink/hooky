@@ -31,4 +31,7 @@ export const HookTargetSchema: Schema<Partial<HookTarget> & { channel: string },
   channel: Schema.string().required().description('A registered channel name.'),
   map: MessageMapSchema,
   match: MatcherSchema,
+  settings: Schema.dict(String).description(
+    'Channel settings for this target only, e.g. the Teams webhook url. The channel declares which keys it reads.',
+  ),
 })

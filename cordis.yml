@@ -83,6 +83,14 @@
   config:
     token: !!js process.env.TELEGRAM_TOKEN
     chatId: !!js process.env.TELEGRAM_CHAT_ID
+- id: teams
+  name: ./src/plugins/channel-teams.ts
+  config:
+    # Empty on purpose, and the row mounts anyway. A trigger url is one Teams
+    # channel, so it belongs to the target: set it per hook in the UI, or with
+    # `hooks target <hook> teams --set webhook=…`. Fill this in only when every
+    # hook posts to the same Teams channel.
+    webhook: !!js process.env.TEAMS_WEBHOOK ?? ''
 - id: ntfy
   name: ./src/plugins/channel-ntfy.ts
   disabled: !!js (!process.env.NTFY_TOPIC)

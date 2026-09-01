@@ -257,3 +257,84 @@ test('the hook endpoints answer 503 without the routes plugin', async (t) => {
   })
   assert.equal(response.status, 503)
 })
+
+test('a target carries channel settings, and the delivery gets them', async (t) => {
+  const { ctx, api, post } = await stack(t)
+  const got: (Record<string, string> | undefined)[] = []
+  await ctx.inject(['notify'], (child) => {
+    child.notify.register({
+      name: 'flow',
+      settings: [{ key: 'url', label: 'webhook url', secret: true }],
+      async send(_message, _signal, settings) {
+        got.push(settings)
+      },
+    })
+  })
+
+  // The form the UI renders is built from this.
+  const channels = await api('GET', '/channels')
+  assert.deepEqual(channels.body['settings']!['flow'], [
+    { key: 'url', label: 'webhook url', secret: true },
+  ])
+
+  const created = await api('POST', '/hooks', {
+    name: 'to-flow',
+    targets: [{ channel: 'flow', settings: { url: 'https://one.test/invoke?sig=a' } }],
+  })
+  assert.equal(created.status, 201)
+  const secret = created.body['secret'] as unknown as string
+
+  assert.equal((await post('to-flow', secret, { title: 'hello' })).status, 200)
+  assert.deepEqual(got, [{ url: 'https://one.test/invoke?sig=a' }])
+
+  // A second hook, the same channel, another destination. That is the point.
+  const second = await api('POST', '/hooks', {
+    name: 'to-other-flow',
+    targets: [{ channel: 'flow', settings: { url: 'https://two.test/invoke?sig=b' } }],
+  })
+  await post('to-other-flow', second.body['secret'] as unknown as string, { title: 'hello' })
+  assert.deepEqual(got[1], { url: 'https://two.test/invoke?sig=b' })
+
+  // Reading it back, and clearing it again.
+  const listed = await api('GET', '/hooks')
+  const hook = (listed.body['hooks'] as unknown as { name: string; targets: unknown[] }[]).find(
+    (row) => row.name === 'to-flow',
+  )
+  assert.deepEqual(hook!.targets, [
+    { channel: 'flow', settings: { url: 'https://one.test/invoke?sig=a' }, missing: false },
+  ])
+
+  const cleared = await api('PUT', '/hooks/to-flow/targets/flow', { settings: { url: '  ' } })
+  assert.deepEqual((cleared.body['targets'] as unknown as unknown[])[0], { channel: 'flow' })
+})
+
+test('a run tries a setting without storing it', async (t) => {
+  const { ctx, api } = await stack(t)
+  const got: (Record<string, string> | undefined)[] = []
+  await ctx.inject(['notify'], (child) => {
+    child.notify.register({
+      name: 'flow',
+      settings: [{ key: 'url', secret: true }],
+      async send(_message, _signal, settings) {
+        got.push(settings)
+      },
+    })
+  })
+  await api('POST', '/hooks', {
+    name: 'to-flow',
+    targets: [{ channel: 'flow', settings: { url: 'https://stored.test' } }],
+  })
+
+  const run = await api('POST', '/hooks/to-flow/targets/flow/run', {
+    payload: { title: 'trying a url' },
+    settings: { url: 'https://trying.test' },
+  })
+  assert.equal(run.status, 200)
+  assert.deepEqual(got, [{ url: 'https://trying.test' }])
+
+  // Nothing was stored, so the next real call goes where it always went.
+  const listed = await api('GET', '/hooks/to-flow')
+  assert.deepEqual((listed.body['targets'] as unknown as { settings: unknown }[])[0]!.settings, {
+    url: 'https://stored.test',
+  })
+})

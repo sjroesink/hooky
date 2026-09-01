@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import * as ntfyChannel from '../src/plugins/channel-ntfy.ts'
+import * as teamsChannel from '../src/plugins/channel-teams.ts'
+import { envelope } from '../src/plugins/channel-teams.ts'
 import * as telegramChannel from '../src/plugins/channel-telegram.ts'
 import { format } from '../src/plugins/channel-telegram.ts'
 import * as hooksPlugin from '../src/plugins/hooks.ts'
@@ -118,4 +120,210 @@ test('format stacks title, body, tags and link', () => {
     event: event(),
   })
   assert.equal(text, '<b>heading</b>\nline\n<i>a, b</i>\n<a href="https://x.test/pad">https://x.test/pad</a>')
+})
+
+const WEBHOOK = 'https://example.test/powerautomate/automations/direct/workflows/x/triggers/manual/paths/invoke?sig=s'
+
+test('teams posts the message envelope with an adaptive card in it', async () => {
+  const { calls, restore } = captureFetch()
+  try {
+    const ctx = new Context()
+    await ctx.plugin(hooksPlugin)
+    await ctx.plugin(teamsChannel, { webhook: WEBHOOK })
+
+    const results = await ctx.hooks.dispatch(
+      event({ hook: 'urgent', title: 'disk full', body: 'on db-01', level: 'error', tags: ['ops'] }),
+    )
+    assert.equal(results[0]!.status, 'sent')
+    assert.equal(calls[0]!.url, WEBHOOK)
+
+    const body = JSON.parse(String(calls[0]!.init.body))
+    assert.equal(body.type, 'message')
+    assert.equal(body.attachments[0].contentType, 'application/vnd.microsoft.card.adaptive')
+    assert.equal(body.attachments[0].contentUrl, null)
+
+    const card = body.attachments[0].content
+    assert.equal(card.type, 'AdaptiveCard')
+    assert.equal(card.version, '1.4')
+    assert.equal(card.$schema, 'http://adaptivecards.io/schemas/adaptive-card.json')
+    assert.deepEqual(card.body[0], {
+      type: 'TextBlock',
+      text: 'disk full',
+      weight: 'Bolder',
+      size: 'Medium',
+      wrap: true,
+      color: 'attention',
+    })
+    assert.deepEqual(card.body[1], { type: 'TextBlock', text: 'on db-01', wrap: true })
+    assert.deepEqual(card.body[2].facts, [
+      { title: 'Hook', value: 'urgent' },
+      { title: 'Level', value: 'error' },
+      { title: 'Tags', value: 'ops' },
+    ])
+    // Nothing to click, so neither the link line nor the action is there.
+    assert.equal(card.body.length, 3)
+    assert.ok(!('actions' in card))
+    await ctx.fiber.dispose()
+  } finally {
+    restore()
+  }
+})
+
+test('teams turns a url into a link and a button, and the level into a colour', async () => {
+  const { calls, restore } = captureFetch()
+  try {
+    const ctx = new Context()
+    await ctx.plugin(hooksPlugin)
+    await ctx.plugin(teamsChannel, { webhook: WEBHOOK, facts: false, version: '1.5' })
+
+    await ctx.hooks.dispatch(event({ level: 'warning', body: '', url: 'https://x.test/run/9' }))
+    const card = JSON.parse(String(calls[0]!.init.body)).attachments[0].content
+    assert.equal(card.version, '1.5')
+    assert.equal(card.body[0].color, 'warning')
+    // No body text and no facts, so the title and the link are all that is left.
+    assert.equal(card.body.length, 2)
+    assert.deepEqual(card.body[1], {
+      type: 'TextBlock',
+      text: '[https://x.test/run/9](https://x.test/run/9)',
+      wrap: true,
+    })
+    assert.deepEqual(card.actions, [{ type: 'Action.OpenUrl', title: 'Open', url: 'https://x.test/run/9' }])
+    await ctx.fiber.dispose()
+  } finally {
+    restore()
+  }
+})
+
+test('teams in text format posts a plain string for a flow that wants one', async () => {
+  const { calls, restore } = captureFetch()
+  try {
+    const ctx = new Context()
+    await ctx.plugin(hooksPlugin)
+    await ctx.plugin(teamsChannel, { webhook: WEBHOOK, format: 'text' })
+
+    await ctx.hooks.dispatch(event({ title: 'build failed', body: 'step 3', tags: ['ci'], url: 'https://x.test' }))
+    assert.deepEqual(JSON.parse(String(calls[0]!.init.body)), {
+      text: '**build failed**\n\nstep 3\n\nci\n\nhttps://x.test',
+    })
+    await ctx.fiber.dispose()
+  } finally {
+    restore()
+  }
+})
+
+test('a flow that refuses the shape fails under its own channel name', async () => {
+  const { restore } = captureFetch(() => new Response('Invalid Request', { status: 400 }))
+  try {
+    const ctx = new Context()
+    await ctx.plugin(hooksPlugin)
+    await ctx.plugin(teamsChannel, { webhook: WEBHOOK, channel: 'teams-ops' })
+
+    const results = await ctx.hooks.dispatch(event())
+    assert.equal(results[0]!.channel, 'teams-ops')
+    assert.match(
+      results[0]!.status === 'failed' ? results[0]!.error : '',
+      /teams-ops responded 400: Invalid Request/,
+    )
+    await ctx.fiber.dispose()
+  } finally {
+    restore()
+  }
+})
+
+test('the envelope is a pure function, so a flow can be checked against it', () => {
+  const built = envelope(
+    { title: 't', body: '', level: 'critical', tags: [], event: event({ hook: 'wake-me' }) },
+    { version: '1.4', facts: true },
+  )
+  const card = (built['attachments'] as Record<string, any>[])[0]!['content']
+  assert.equal(card.body[0].color, 'attention')
+  assert.deepEqual(card.body[1].facts, [
+    { title: 'Hook', value: 'wake-me' },
+    { title: 'Level', value: 'critical' },
+  ])
+})
+
+test('a target carries its own webhook, and that one wins', async () => {
+  const { calls, restore } = captureFetch()
+  try {
+    const ctx = new Context()
+    await ctx.plugin(hooksPlugin)
+    await ctx.plugin(teamsChannel, { webhook: 'https://default.test/invoke?sig=row' })
+
+    // deliverTo is the path a hook target takes, settings and all.
+    await ctx.notify.deliverTo(
+      { title: 'from a hook', body: '', level: 'info', tags: [], event: event() },
+      { channel: 'teams', settings: { webhook: 'https://ops.test/invoke?sig=target' } },
+    )
+    assert.equal(calls[0]!.url, 'https://ops.test/invoke?sig=target')
+
+    // No setting on the target, so the row's default is where it goes.
+    await ctx.notify.deliverTo(
+      { title: 'from another hook', body: '', level: 'info', tags: [], event: event() },
+      { channel: 'teams' },
+    )
+    assert.equal(calls[1]!.url, 'https://default.test/invoke?sig=row')
+    await ctx.fiber.dispose()
+  } finally {
+    restore()
+  }
+})
+
+test('a target can pick the format too, without a second teams row', async () => {
+  const { calls, restore } = captureFetch()
+  try {
+    const ctx = new Context()
+    await ctx.plugin(hooksPlugin)
+    await ctx.plugin(teamsChannel, { webhook: WEBHOOK })
+
+    const message = { title: 'plain', body: '', level: 'info' as const, tags: [], event: event() }
+    await ctx.notify.deliverTo(message, { channel: 'teams', settings: { format: 'text' } })
+    assert.deepEqual(JSON.parse(String(calls[0]!.init.body)), { text: '**plain**' })
+
+    // Anything that is not a format this channel knows leaves the row's choice alone.
+    await ctx.notify.deliverTo(message, { channel: 'teams', settings: { format: 'nonsense' } })
+    assert.equal(JSON.parse(String(calls[1]!.init.body)).type, 'message')
+    await ctx.fiber.dispose()
+  } finally {
+    restore()
+  }
+})
+
+test('teams without a url anywhere fails with the fix in the message', async () => {
+  const { calls, restore } = captureFetch()
+  try {
+    const ctx = new Context()
+    await ctx.plugin(hooksPlugin)
+    await ctx.plugin(teamsChannel, {})
+
+    const result = await ctx.notify.deliverTo(
+      { title: 't', body: '', level: 'info', tags: [], event: event() },
+      { channel: 'teams' },
+    )
+    assert.equal(result.status, 'failed')
+    assert.match(
+      result.status === 'failed' ? result.error : '',
+      /no webhook url: set one on this target, or a default on the teams row/,
+    )
+    assert.equal(calls.length, 0, 'and nothing was posted anywhere')
+    await ctx.fiber.dispose()
+  } finally {
+    restore()
+  }
+})
+
+test('a channel says which settings it takes, so a form can ask for them', async () => {
+  const ctx = new Context()
+  await ctx.plugin(hooksPlugin)
+  await ctx.plugin(teamsChannel, { webhook: WEBHOOK })
+  await ctx.plugin(ntfyChannel, { topic: 'quiet' })
+
+  const declared = ctx.notify.settings
+  assert.deepEqual(Object.keys(declared), ['teams'], 'ntfy takes nothing per target')
+  assert.deepEqual(
+    declared['teams']!.map((one) => one.key),
+    ['webhook', 'format'],
+  )
+  assert.equal(declared['teams']![0]!.secret, true, 'the url is a credential')
+  await ctx.fiber.dispose()
 })

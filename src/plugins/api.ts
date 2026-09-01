@@ -185,7 +185,13 @@ export function apply(ctx: Context, config: Config): void {
 
   route('GET', '/channels', async () => ({
     status: 200,
-    body: { channels: ctx.notify.names, stats: (await ctx.store.stats()).channels },
+    body: {
+      channels: ctx.notify.names,
+      // Per channel, the settings a target may carry. Empty for a channel that
+      // takes everything from its own row.
+      settings: ctx.notify.settings,
+      stats: (await ctx.store.stats()).channels,
+    },
   }))
 
   /* ---------------- hooks ---------------- */
@@ -283,10 +289,10 @@ export function apply(ctx: Context, config: Config): void {
   })
 
   /**
-   * A real send to one channel, so a Telegram target actually buzzes. `map` and
-   * `match` in the body replace the stored ones for this run only, which is how
-   * the UI tries an edit before saving it. Nothing is stored and nothing is
-   * queued: the answer is the whole record of the attempt.
+   * A real send to one channel, so a Telegram target actually buzzes. `map`,
+   * `match` and `settings` in the body replace the stored ones for this run
+   * only, which is how the UI tries an edit before saving it. Nothing is stored
+   * and nothing is queued: the answer is the whole record of the attempt.
    */
   route('POST', '/hooks/:name/targets/:channel/run', async (request) => {
     const name = request.params['name']!
@@ -296,12 +302,14 @@ export function apply(ctx: Context, config: Config): void {
       channel,
       ...(input['map'] === undefined ? {} : { map: input['map'] }),
       ...(input['match'] === undefined ? {} : { match: input['match'] }),
+      ...(input['settings'] === undefined ? {} : { settings: input['settings'] }),
     })
     // Only the keys the caller sent: an absent `map` keeps the stored mapping,
     // while `map: {}` is a deliberate "no mapping for this run".
     const override: Partial<HookTarget> = {
       ...(input['map'] === undefined ? {} : { map: validated.map }),
       ...(input['match'] === undefined ? {} : { match: validated.match }),
+      ...(input['settings'] === undefined ? {} : { settings: validated.settings }),
     }
     const run = await routesOrThrow().run(name, channel, input['payload'] ?? {}, override)
     logger.info(`ran hook '${name}' to ${channel}: ${run.result?.status ?? `skipped, ${run.skipped}`}`)
@@ -565,7 +573,11 @@ function describeApi(base: string) {
         body: { hook: 'string', title: 'string', body: 'string?', level: LEVELS, url: 'string?', tags: 'string[]?' },
         use: 'send a notification without going through a webhook',
       },
-      { method: 'GET', path: `${base}/channels`, use: 'registered channels and their delivery counts' },
+      {
+        method: 'GET',
+        path: `${base}/channels`,
+        use: 'registered channels, the settings each accepts per target, and their delivery counts',
+      },
       {
         method: 'GET',
         path: `${base}/hooks`,
@@ -603,6 +615,7 @@ function describeApi(base: string) {
         body: {
           map: '{ title?, body?, url?: template, level?: Level, tags?: template[] }',
           match: '{ minLevel?: Level, tags?: string[] }',
+          settings: 'channel settings for this target, e.g. { webhook } for teams; see GET /channels',
         },
         use: 'add one channel to a hook and say what it receives',
       },
@@ -621,6 +634,7 @@ function describeApi(base: string) {
           payload: 'the body a caller would POST',
           map: 'MessageMap?, replaces the stored one for this run',
           match: 'Matcher?, replaces the stored one for this run',
+          settings: 'Record<string, string>?, replaces the stored ones for this run',
         },
         use: 'send that payload to that one channel for real; nothing is stored or queued',
       },

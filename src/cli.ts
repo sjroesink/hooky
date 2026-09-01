@@ -71,6 +71,21 @@ function assignments(raw: string | boolean | undefined): Record<string, unknown>
   return out
 }
 
+/**
+ * Like `assignments`, minus the coercion. A channel setting is a string: a
+ * webhook url stays a url and `format=card` does not become anything else.
+ */
+function plainAssignments(raw: string | boolean | undefined): Record<string, string> {
+  const out: Record<string, string> = {}
+  const list = Array.isArray(raw) ? raw : raw === undefined || typeof raw === 'boolean' ? [] : [raw]
+  for (const item of list) {
+    const index = item.indexOf('=')
+    if (index < 0) throw new Error(`--set expects key=value, got '${item}'`)
+    out[item.slice(0, index)] = item.slice(index + 1)
+  }
+  return out
+}
+
 function coerce(value: string): unknown {
   if (value === 'true') return true
   if (value === 'false') return false
@@ -220,6 +235,7 @@ const commands: Record<string, Command> = {
       '--tag': 'tag template, repeatable; replaces the tags',
       '--min-level': 'only deliver to this channel from this level up',
       '--only-tag': 'only deliver when the event carries this tag, repeatable',
+      '--set': 'channel setting key=value, repeatable; teams takes webhook and format',
     },
     async run(argv, flags) {
       const map: Record<string, unknown> = {}
@@ -233,9 +249,12 @@ const commands: Record<string, Command> = {
       if (typeof flags['min-level'] === 'string') match['minLevel'] = flags['min-level']
       if (many(flags['only-tag']).length > 0) match['tags'] = many(flags['only-tag'])
 
+      const settings = plainAssignments(flags['set'])
+
       return call('PUT', `/hooks/${need(argv[0], 'name')}/targets/${need(argv[1], 'channel')}`, {
         ...(Object.keys(map).length > 0 ? { map } : {}),
         ...(Object.keys(match).length > 0 ? { match } : {}),
+        ...(Object.keys(settings).length > 0 ? { settings } : {}),
       })
     },
   },
@@ -265,13 +284,18 @@ const commands: Record<string, Command> = {
   'hooks run': {
     use: 'send a payload to one channel of a hook for real, to see it arrive',
     args: '<name> <channel>',
-    flags: { '--data': 'JSON payload; a sample is used when omitted' },
+    flags: {
+      '--data': 'JSON payload; a sample is used when omitted',
+      '--set': 'channel setting key=value for this run only, repeatable',
+    },
     async run(argv, flags) {
       const raw = typeof flags['data'] === 'string' ? flags['data'] : SAMPLE_PAYLOAD
       const name = need(argv[0], 'name')
       const channel = need(argv[1], 'channel')
+      const settings = plainAssignments(flags['set'])
       return call('POST', `/hooks/${name}/targets/${channel}/run`, {
         payload: JSON.parse(raw) as unknown,
+        ...(Object.keys(settings).length > 0 ? { settings } : {}),
       })
     },
   },

@@ -66,6 +66,28 @@ replaces that target; it never adds a second one.
 An empty value inside a target means "leave this alone", never "make this empty". So dropping a mapping
 is `{"map":{}}`, and a `tags: []` does not wipe the event's tags.
 
+## When the channel needs the destination
+
+Some channels take the destination from the target rather than from the composition. Teams is the one
+here: a Workflows webhook url is one Teams channel, so it belongs to the hook.
+
+```sh
+curl -X PUT -H 'authorization: Bearer <token>' -H 'content-type: application/json'   __BASE____API__/hooks/deploy/targets/teams   -d '{"settings":{"webhook":"https://…/triggers/manual/paths/invoke?…&sig=…"}}'
+```
+
+`GET __API__/channels` lists, per channel, the settings it accepts: the key, a label, and whether it is
+a credential. Ask that before you invent a key, because a channel ignores what it did not declare. What
+teams takes:
+
+| Setting | Is |
+|---|---|
+| `webhook` | The Workflows trigger url. Which Teams channel this target posts in |
+| `format` | `card` for an Adaptive Card, `text` for a flow built around a plain string |
+
+Two hooks posting in two Teams channels is two targets with two urls, not two plugins. Leave `webhook`
+out and the channel falls back to the url on its own row, which may be empty: then the delivery fails
+with `no webhook url`, and that is the fix, not a bug to report.
+
 ## Templates
 
 `{{path}}` resolves against the event. A path that resolves to nothing becomes an empty string, an
@@ -113,7 +135,7 @@ not an event: it is never stored and never queued.
 | `DELETE __API__/hooks/:name/targets/:channel` | Remove one target |
 | `POST __API__/hooks/:name/rotate` | New secret, shown once. The old one stops working immediately |
 | `DELETE __API__/hooks/:name` | Remove the hook. Calls to that name answer 404 after this |
-| `GET __API__/channels` | The channels that exist, and what they delivered |
+| `GET __API__/channels` | The channels that exist, the settings each takes per target, and what they delivered |
 | `GET __API__/hooks?include=hash` | Every definition with its hash, which is the backup format |
 | `PUT __API__/hooks` | Replace every definition with `{"hooks": [...]}` from such a backup |
 
@@ -132,6 +154,9 @@ the instance disagree, because the catalogue comes from the code.
    and a hook that maps everything to critical is a hook people mute.
 5. One call is one notification. Do not tell a caller to post twice: add a target and let the hook fan
    out.
+6. A setting marked as a credential, like a Teams webhook url, is readable through this API and lands
+   in a backup from `GET __API__/hooks?include=hash`. Do not paste one into a ticket, a commit or a
+   screenshot, and treat that backup the way you treat an environment file.
 
 ## The other skills
 

@@ -66,7 +66,7 @@ And the services, each provided by a plugin and reachable as `ctx.<name>`:
 |---|---|
 | `ctx.server` | `route(method, pattern, handler)`, returning a disposer |
 | `ctx.hooks` | `submit(event, { waitMs })` to feed one in, `dispatch(event)` to send one now |
-| `ctx.notify` | `register(channel)`, `names`, `deliverTo(message, target)` |
+| `ctx.notify` | `register(channel)`, `names`, `settings`, `deliverTo(message, target)` |
 | `ctx.store` | The history and the queue: `append`, `get`, `list`, `due`, `recordAttempt`, `stats` |
 | `ctx.routes` | The hook definitions: `list`, `get`, `create`, `setTarget`, `preview`, `run` |
 | `ctx.logger(name)` | A logger that carries that name in every line |
@@ -78,9 +78,12 @@ export function apply(ctx: Context, config: Config): void {
   ctx.notify.register({
     name: config.channel,
     match: config.match,
-    async send(message, signal) {
+    // Optional. What a target may set for itself, which the API hands to the
+    // web interface so the target editor can ask for it.
+    settings: [{ key: 'webhook', label: 'webhook url', secret: true }],
+    async send(message, signal, settings) {
       await postJson({
-        url: config.webhook,
+        url: settings?.['webhook'] || config.webhook,
         payload: { text: `*${message.title}*\n${message.body}` },
         signal,
         timeoutMs: config.timeoutMs,
@@ -90,6 +93,10 @@ export function apply(ctx: Context, config: Config): void {
   })
 }
 ```
+
+Declare `settings` when the destination belongs to the hook rather than to the composition. A Teams
+webhook url is one Teams channel, so `src/plugins/channel-teams.ts` puts it there and one row serves
+every hook. Config stays the fallback, and a target that sets nothing gets what the row says.
 
 `send` rejects on failure and that is the whole error protocol: the retry policy and the outbox read the
 rejection, not a status code. `signal` aborts when your fiber unloads, so pass it into `fetch` and a

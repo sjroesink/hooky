@@ -65,12 +65,32 @@ export interface Matcher {
   tags?: string[]
 }
 
+/**
+ * One setting a channel accepts per target, so a form can ask for it without
+ * knowing what the channel is. A Teams webhook url is the case this exists for:
+ * the destination belongs to the hook, not to the composition.
+ */
+export interface ChannelSetting {
+  key: string
+  /** Shown next to the input. Defaults to the key. */
+  label?: string
+  /** A credential. It stays out of summaries and logs. */
+  secret?: boolean
+  placeholder?: string
+  hint?: string
+}
+
 export interface Channel {
   /** Unique across the application; two fibers of one plugin need two names. */
   name: string
   match?: Matcher
-  /** Rejects on failure. `signal` aborts when the owning fiber unloads. */
-  send(message: Message, signal: AbortSignal): Promise<void>
+  /** Settings this channel reads off a target, over its own config. */
+  settings?: ChannelSetting[]
+  /**
+   * Rejects on failure. `signal` aborts when the owning fiber unloads.
+   * `settings` is what the target carries, already validated as strings.
+   */
+  send(message: Message, signal: AbortSignal, settings?: Record<string, string>): Promise<void>
 }
 
 export type DeliveryResult =

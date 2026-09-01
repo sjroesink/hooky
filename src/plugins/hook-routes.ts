@@ -217,12 +217,13 @@ class Routes extends Service implements RoutesService {
     const notify = this.ctx.get('notify')
     if (!notify) return { channel, skipped: 'there is no notify service in this composition' }
 
-    // Shaped here, then handed over as a bare target: the map is applied once,
-    // so a `{{path}}` the payload itself carries is not resolved a second time.
+    // Shaped here, then handed over without the map: it is applied once, so a
+    // `{{path}}` the payload itself carries is not resolved a second time. The
+    // settings do go along, because they say where this target posts at all.
     // A channel that is not registered comes back as a skipped result from
     // notify, which is the same answer a real delivery would give.
     const shaped = shape(message, target.map)
-    const result = await notify.deliverTo(shaped, { channel })
+    const result = await notify.deliverTo(shaped, { channel, ...(target.settings ? { settings: target.settings } : {}) })
     return { channel, message: viewOf(shaped), result }
   }
 

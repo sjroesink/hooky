@@ -34,6 +34,14 @@ export interface HookTarget {
   map?: MessageMap
   /** Extra filter inside the hook, e.g. only from `error` up to this channel. */
   match?: Matcher
+  /**
+   * Channel settings for this target only, over whatever the channel row
+   * configures. Which keys mean something is the channel's business: it declares
+   * them as `ChannelSetting[]` and reads them in `send`. This is where a Teams
+   * webhook url lives, so one hook can post in another Teams channel than the
+   * next without a second plugin row.
+   */
+  settings?: Record<string, string>
 }
 
 export interface HookDefinition {
@@ -160,7 +168,20 @@ export function tidyTarget(target: HookTarget): HookTarget {
   if (map) tidied.map = map
   const match = tidyMatch(target.match)
   if (match) tidied.match = match
+  const settings = tidySettings(target.settings)
+  if (settings) tidied.settings = settings
   return tidied
+}
+
+/** An empty value is not a setting: it means "use what the channel row says". */
+function tidySettings(settings: Record<string, string> | undefined): Record<string, string> | undefined {
+  if (!settings) return undefined
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(settings)) {
+    const trimmed = String(value ?? '').trim()
+    if (trimmed !== '') out[key] = trimmed
+  }
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 function tidyMap(map: MessageMap | undefined): MessageMap | undefined {

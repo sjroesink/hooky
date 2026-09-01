@@ -625,6 +625,7 @@ const state = {
   plugins: [],
   hooks: [],          // hook definitions, the layer between a call and a channel
   channels: [],       // channel names registered right now
+  chSettings: {},     // per channel, the settings a target may carry
   hookSel: null,      // selected hook name, or NEW for the create form
   hookFilter: '',
   revealed: null,     // { name, secret }: shown once, after a create or a rotate
@@ -1129,6 +1130,7 @@ async function load() {
 
     let hooks = state.hooks
     let channels = state.channels
+    let chSettings = state.chSettings
 
     if (state.view === 'calls') {
       const data = await api(`/events?${query()}`)
@@ -1137,7 +1139,9 @@ async function load() {
       if (detail) detail = await api(`/events/${detail.id}`)
     } else if (state.view === 'hooks') {
       hooks = (await api('/hooks')).hooks
-      channels = (await api('/channels')).channels
+      const known = await api('/channels')
+      channels = known.channels
+      chSettings = known.settings ?? {}
     } else {
       plugins = (await api('/plugins')).plugins
     }
@@ -1149,6 +1153,7 @@ async function load() {
     state.plugins = plugins
     state.hooks = hooks
     state.channels = channels
+    state.chSettings = chSettings
     state.detail = detail
     state.needsToken = false
     render()
@@ -1278,6 +1283,10 @@ function targetSummary(target) {
   if (target.map?.tags?.length) parts.push(`tags ${target.map.tags.join(', ')}`)
   if (target.match?.minLevel) parts.push(`from ${target.match.minLevel} up`)
   if (target.match?.tags?.length) parts.push(`only tagged ${target.match.tags.join(', ')}`)
+  // A setting can be a credential, so the summary says which one is set, not what it says.
+  for (const [key, value] of Object.entries(target.settings ?? {})) {
+    parts.push(secretSetting(target.channel, key) ? `own ${key}` : `${key} ${value}`)
+  }
   return parts.length > 0 ? parts.join(' · ') : 'the message as it came in'
 }
 
@@ -1417,6 +1426,32 @@ function targetBlock(hook, target) {
     </div>`
 }
 
+/** Does this channel call that setting a credential? */
+function secretSetting(channel, key) {
+  return (state.chSettings[channel] ?? []).some((one) => one.key === key && one.secret)
+}
+
+/**
+ * The fields a channel asks for, above the mapping, because they decide where
+ * this target posts at all. Teams is the reason: the webhook url is the Teams
+ * channel, so it belongs to the hook and not to the composition.
+ */
+function settingFields(target) {
+  const declared = state.chSettings[target.channel] ?? []
+  if (declared.length === 0) return ''
+  const values = target.settings ?? {}
+  return declared
+    .map(
+      (one) => `
+      <label for="s-${esc(one.key)}">${esc(one.label ?? one.key)}</label>
+      <input id="s-${esc(one.key)}" data-setting="${esc(one.key)}" autocomplete="off"
+             spellcheck="false" value="${esc(values[one.key] ?? '')}"
+             placeholder="${esc(one.placeholder ?? '')}">
+      ${one.hint ? `<div class="hint">${esc(one.hint)}</div>` : ''}`,
+    )
+    .join('')
+}
+
 function targetEditor(target) {
   const map = target.map ?? {}
   const match = target.match ?? {}
@@ -1425,6 +1460,7 @@ function targetEditor(target) {
     `<option value="${esc(value)}"${value === selected ? ' selected' : ''}>${esc(label ?? value ?? '')}</option>`
   return `
     <div class="editor" data-channel="${esc(target.channel)}">
+      ${settingFields(target)}
       <label for="e-title">title</label>
       <input id="e-title" data-tpl="1" autocomplete="off" value="${esc(map.title ?? '')}" placeholder="{{title}}">
       <label for="e-body">body</label>
@@ -2054,18 +2090,26 @@ function editorTarget() {
   if ($('e-min').value) match.minLevel = $('e-min').value
   if (list($('e-only').value).length > 0) match.tags = list($('e-only').value)
 
-  return { map, match }
+  // Whatever the channel asked for. An empty field is not a setting: the server
+  // drops it, and the channel falls back to its own row.
+  const settings = {}
+  for (const input of document.querySelectorAll('#hook-detail .editor input[data-setting]')) {
+    if (input.value.trim()) settings[input.dataset.setting] = input.value.trim()
+  }
+
+  return { map, match, settings }
 }
 
 /** Reads the editor as it stands and replaces that one target. */
 async function saveTarget(hook, channel) {
-  const { map, match } = editorTarget()
+  const { map, match, settings } = editorTarget()
   try {
     await api(`/hooks/${hook.name}/targets/${channel}`, {
       method: 'PUT',
       body: JSON.stringify({
         ...(Object.keys(map).length > 0 ? { map } : {}),
         ...(Object.keys(match).length > 0 ? { match } : {}),
+        ...(Object.keys(settings).length > 0 ? { settings } : {}),
       }),
     })
     state.openTarget = null

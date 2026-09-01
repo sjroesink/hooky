@@ -154,6 +154,11 @@ node src/cli.ts hooks preview urgent --data '{"title":"api is down","buildId":99
 node src/cli.ts hooks run urgent telegram --data '{"title":"api is down","buildId":991}'
 ```
 
+A target can also carry settings for its channel, with `--set key=value`. That is for a channel whose
+destination is part of the wiring rather than of the composition: a Teams webhook url is one Teams
+channel, so it sits on the target and every hook can point somewhere else. `GET /api/channels` says
+which keys a channel takes, which is how the web interface knows to ask for them.
+
 `preview` resolves the templates per channel and sends nothing. `run` is the other half: one payload,
 one channel, actually sent, so you read the result on your phone instead of in a JSON body. That is
 the check a preview cannot do, because how a message lands is a question about Telegram and not about
@@ -230,7 +235,10 @@ export function apply(ctx: Context, config: Config): void {
   ctx.notify.register({
     name: config.channel,
     match: config.match,
-    async send(message, signal) {
+    // Optional: what a target may set for itself, e.g. a destination url. The
+    // API hands this to the web interface, which renders a field per entry.
+    settings: [{ key: 'url', label: 'endpoint', secret: true }],
+    async send(message, signal, settings) {
       // Throw on failure; the pipeline turns that into a failed delivery.
     },
   })
@@ -249,6 +257,56 @@ layer mounted the definitions decide, and a channel usually needs no matcher at 
 
 Mounting the same plugin twice with different config gives two channels. That is how you get a Telegram
 channel for everything and a second one for an oncall chat, and a hook that targets both.
+
+## Teams over a Workflows webhook
+
+The `teams` channel posts to a Power Automate flow, the trigger that replaced the retired Office 365
+connectors. In Teams, open Workflows and create one from the template
+[Send webhook alerts to a channel](https://support.microsoft.com/en-US/Workflows/send-messages-in-teams-using-incoming-webhooks),
+which needs no premium license. Copy the url from the workflow details.
+
+That url points at one Teams channel, so it belongs to the hook and not to the composition. Open the
+hook, add `teams` as a target, and paste it into the webhook field:
+
+```sh
+node src/cli.ts hooks add releases --target teams
+node src/cli.ts hooks target releases teams --set webhook='https://…/triggers/manual/paths/invoke?…&sig=…'
+```
+
+The web interface asks for the same field, because the channel declares what it accepts and
+`GET /api/channels` hands that to the page. So a second hook posting in another Teams channel is
+another url on another target, not a second plugin row. The row's own `webhook`, from `TEAMS_WEBHOOK`,
+is only a default for when every hook lands in the same place, and the row mounts without it.
+
+The url is also a credential: the `sig` in the query string is what authorizes the call, and anyone
+holding it can post in that channel. Stored on the target it is readable through the admin API and it
+lands in `hooks export`, so treat that backup the way you treat `.env`. The target list shows
+`own webhook`, never the url itself.
+
+What the endpoint accepts depends on the flow behind it, and there is no way to ask it beforehand:
+
+| `format` | Body it posts | For a flow that |
+|---|---|---|
+| `card` (default) | `{ "type": "message", "attachments": [ one adaptive card ] }` | came from a webhook template |
+| `text` | `{ "text": "..." }` | was built around a plain string |
+
+The templates from that article loop over `attachments` and post each card, so `card` is the one they
+want. It is the default, and a target can override it per hook with `--set format=text`.
+
+The wrong one answers `400 Invalid Request`. That is a failed delivery like any other, so the outbox
+keeps retrying it on a backoff for hours, which is a slow way to learn. After changing `format`, fire
+one call by hand and read the result.
+
+The card carries the title coloured by level (`attention` for error and critical, `warning` for warning,
+grey for debug), the body, a fact list with the hook, the level and the tags, and the url both as a
+markdown link in the card and as an `Action.OpenUrl` button under it. That duplication is deliberate:
+Microsoft lists buttons not rendering as a known issue for cards posted by the flow bot, and a url
+nobody can reach is worse than one extra line. `facts: false` leaves the fact list out and `version`
+sets the Adaptive Card version, which Teams renders from 1.0 through 1.5.
+
+Teams throttles above four requests per second and refuses a message over 28 KB. The `rate-limit` row
+covers the first at 20 per minute per channel. For the second, keep a mapped payload dump out of the
+body of a hook that targets Teams.
 
 ## Composition
 
@@ -287,7 +345,7 @@ does nothing on every boot after that.
 |---|---|---|
 | `ctx.server` | `server-node.ts` | `route(method, pattern, handler)`, `address` |
 | `ctx.hooks` | `hooks.ts` | `submit(event)`, `dispatch(event, options)` |
-| `ctx.notify` | `hooks.ts` | `register(channel)`, `names`, `deliver(message, skip)` |
+| `ctx.notify` | `hooks.ts` | `register(channel)`, `names`, `settings`, `deliver(message, skip)`, `deliverTo(message, target)` |
 | `ctx.routes` | `hook-routes.ts` | `list`, `get`, `create`, `setTarget`, `rotate`, `preview`, `run`, `targetsFor` |
 | `ctx.store` | `store-sqlite.ts` | `append`, `get`, `list`, `due`, `recordAttempt`, `stats`, `prune`, `listHooks`, `saveHook` |
 | `ctx.timer` | `@deepseek-ai/cordis-plugin-timer` | `ctx.timeout`, `ctx.interval` as effects |
