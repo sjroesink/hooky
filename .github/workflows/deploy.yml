@@ -6,6 +6,7 @@ on:
       - main
   workflow_dispatch:
 
+# Deployment uses a short-lived GitHub OIDC identity; no repository secret is required.
 permissions:
   contents: read
   id-token: write
