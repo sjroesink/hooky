@@ -155,9 +155,21 @@ node src/cli.ts hooks run urgent telegram --data '{"title":"api is down","buildI
 ```
 
 A target can also carry settings for its channel, with `--set key=value`. That is for a channel whose
-destination is part of the wiring rather than of the composition: a Teams webhook url is one Teams
-channel, so it sits on the target and every hook can point somewhere else. `GET /api/channels` says
-which keys a channel takes, which is how the web interface knows to ask for them.
+destination is part of the wiring rather than of the composition:
+
+```sh
+node src/cli.ts hooks target releases teams --set webhook='https://…/triggers/manual/paths/invoke?…&sig=…'
+node src/cli.ts hooks target releases ntfy --set topic=releases
+```
+
+A Teams webhook url is one Teams channel and an ntfy topic is one feed on someone's phone, so both sit
+on the target and every hook can point somewhere else. `GET /api/channels` says which keys a channel
+takes and which of them are credentials, which is how the web interface knows to ask for them.
+Telegram declares none: its chat is genuinely a property of the row.
+
+A target with no destination and a row with no default is **skipped**, not failed. The result says
+`no topic: set one on this target, or a default on the ntfy row`, and because it is not a failure the
+outbox schedules no pass to find the same nothing again.
 
 `preview` resolves the templates per channel and sends nothing. `run` is the other half: one payload,
 one channel, actually sent, so you read the result on your phone instead of in a JSON body. That is
@@ -240,6 +252,8 @@ export function apply(ctx: Context, config: Config): void {
     settings: [{ key: 'url', label: 'endpoint', secret: true }],
     async send(message, signal, settings) {
       // Throw on failure; the pipeline turns that into a failed delivery.
+      // Throw ChannelSkip when there is nothing to send to: that is a skipped
+      // result, and the outbox does not come back to try it again.
     },
   })
 }

@@ -93,8 +93,11 @@
     webhook: !!js process.env.TEAMS_WEBHOOK ?? ''
 - id: ntfy
   name: ./src/plugins/channel-ntfy.ts
-  disabled: !!js (!process.env.NTFY_TOPIC)
   config:
     server: !!js process.env.NTFY_SERVER ?? 'https://ntfy.sh'
-    topic: !!js process.env.NTFY_TOPIC
+    # A topic is a destination, so it normally sits on the target: per hook, in
+    # the UI, or with `hooks target <hook> ntfy --set topic=…`. This is the
+    # default for when every hook publishes to the same topic. Without either,
+    # the delivery is skipped and says so.
+    topic: !!js process.env.NTFY_TOPIC ?? ''
     token: !!js process.env.NTFY_TOKEN ?? ''

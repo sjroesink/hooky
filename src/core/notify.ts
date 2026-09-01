@@ -2,6 +2,7 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import { shape } from './render.ts'
 import type { HookTarget } from './routes.ts'
 import {
+  ChannelSkip,
   describe,
   matches,
   type Channel,
@@ -137,21 +138,29 @@ export class NotifyService extends Service {
     settings?: Record<string, string>,
   ): Promise<DeliveryResult> {
     for (let attempt = 1; ; attempt++) {
-      const error = await this.attempt(message, channel, settings)
-      if (!error) return { channel: channel.name, status: 'sent', attempts: attempt }
-      const again = await this.ctx.serial('notify/retry', channel.name, error, attempt)
+      const problem = await this.attempt(message, channel, settings)
+      if (!problem) return { channel: channel.name, status: 'sent', attempts: attempt }
+      // The channel says there is nothing to send to. Trying again would produce
+      // the same answer, so this is not a failure and the policy is not asked.
+      if (problem instanceof ChannelSkip) {
+        return { channel: channel.name, status: 'skipped', reason: problem.message }
+      }
+      const again = await this.ctx.serial('notify/retry', channel.name, problem, attempt)
       if (again !== true) {
-        return { channel: channel.name, status: 'failed', error, attempts: attempt }
+        return { channel: channel.name, status: 'failed', error: problem, attempts: attempt }
       }
     }
   }
 
-  /** One attempt. Returns the error message, or undefined when it went out. */
+  /**
+   * One attempt. Answers with the error message, a `ChannelSkip` the channel
+   * threw, or undefined when it went out.
+   */
   private async attempt(
     message: Message,
     channel: Channel,
     settings?: Record<string, string>,
-  ): Promise<string | undefined> {
+  ): Promise<string | ChannelSkip | undefined> {
     const controller = new AbortController()
     let release: (() => unknown) | undefined
     try {
@@ -164,6 +173,7 @@ export class NotifyService extends Service {
       await channel.send(message, controller.signal, settings)
       return undefined
     } catch (error) {
+      if (error instanceof ChannelSkip) return error
       return describe(error)
     } finally {
       release?.()

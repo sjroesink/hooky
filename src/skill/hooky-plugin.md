@@ -95,8 +95,11 @@ export function apply(ctx: Context, config: Config): void {
 ```
 
 Declare `settings` when the destination belongs to the hook rather than to the composition. A Teams
-webhook url is one Teams channel, so `src/plugins/channel-teams.ts` puts it there and one row serves
-every hook. Config stays the fallback, and a target that sets nothing gets what the row says.
+webhook url is one Teams channel and an ntfy topic is one feed, so `channel-teams.ts` and
+`channel-ntfy.ts` both put it there and one row serves every hook. Config stays the fallback, and a
+target that sets nothing gets what the row says. With nothing on either, throw `ChannelSkip` from
+`src/core/types.ts`: that answers `skipped` with your message instead of `failed`, so the retry policy
+is not asked and the outbox does not come back for it.
 
 `send` rejects on failure and that is the whole error protocol: the retry policy and the outbox read the
 rejection, not a status code. `signal` aborts when your fiber unloads, so pass it into `fetch` and a

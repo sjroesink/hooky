@@ -289,23 +289,35 @@ test('a target can pick the format too, without a second teams row', async () =>
   }
 })
 
-test('teams without a url anywhere fails with the fix in the message', async () => {
+test('no destination anywhere is skipped, not failed, and not retried', async () => {
   const { calls, restore } = captureFetch()
   try {
     const ctx = new Context()
     await ctx.plugin(hooksPlugin)
     await ctx.plugin(teamsChannel, {})
+    await ctx.plugin(ntfyChannel, {})
+    let asked = 0
+    ctx.on('notify/retry', async () => void asked++)
 
-    const result = await ctx.notify.deliverTo(
-      { title: 't', body: '', level: 'info', tags: [], event: event() },
-      { channel: 'teams' },
+    const message = { title: 't', body: '', level: 'info' as const, tags: [], event: event() }
+    const teams = await ctx.notify.deliverTo(message, { channel: 'teams' })
+    assert.equal(teams.status, 'skipped')
+    assert.equal(
+      teams.status === 'skipped' ? teams.reason : '',
+      'no webhook url: set one on this target, or a default on the teams row',
     )
-    assert.equal(result.status, 'failed')
-    assert.match(
-      result.status === 'failed' ? result.error : '',
-      /no webhook url: set one on this target, or a default on the teams row/,
+
+    const ntfy = await ctx.notify.deliverTo(message, { channel: 'ntfy' })
+    assert.equal(ntfy.status, 'skipped')
+    assert.equal(
+      ntfy.status === 'skipped' ? ntfy.reason : '',
+      'no topic: set one on this target, or a default on the ntfy row',
     )
-    assert.equal(calls.length, 0, 'and nothing was posted anywhere')
+
+    assert.equal(calls.length, 0, 'nothing was posted anywhere')
+    // A skip is not a failure, so the policy is never asked and the outbox
+    // schedules no pass to try the same nothing again.
+    assert.equal(asked, 0)
     await ctx.fiber.dispose()
   } finally {
     restore()
@@ -317,13 +329,56 @@ test('a channel says which settings it takes, so a form can ask for them', async
   await ctx.plugin(hooksPlugin)
   await ctx.plugin(teamsChannel, { webhook: WEBHOOK })
   await ctx.plugin(ntfyChannel, { topic: 'quiet' })
+  await ctx.plugin(telegramChannel, { token: 't', chatId: '1' })
 
   const declared = ctx.notify.settings
-  assert.deepEqual(Object.keys(declared), ['teams'], 'ntfy takes nothing per target')
+  assert.deepEqual(Object.keys(declared), ['teams', 'ntfy'], 'telegram takes nothing per target')
   assert.deepEqual(
     declared['teams']!.map((one) => one.key),
     ['webhook', 'format'],
   )
+  assert.deepEqual(
+    declared['ntfy']!.map((one) => one.key),
+    ['topic', 'server', 'token'],
+  )
   assert.equal(declared['teams']![0]!.secret, true, 'the url is a credential')
+  assert.equal(declared['ntfy']![0]!.secret, undefined, 'a topic is not one')
   await ctx.fiber.dispose()
+})
+
+test('a target publishes to its own ntfy topic, on its own server', async () => {
+  const { calls, restore } = captureFetch()
+  try {
+    const ctx = new Context()
+    await ctx.plugin(hooksPlugin)
+    await ctx.plugin(ntfyChannel, { topic: 'row-topic', token: 'row-token' })
+
+    const message = { title: 'hello', body: '', level: 'info' as const, tags: [], event: event() }
+    await ctx.notify.deliverTo(message, { channel: 'ntfy', settings: { topic: 'deploys' } })
+    assert.equal(calls[0]!.url, 'https://ntfy.sh/')
+    assert.equal(JSON.parse(String(calls[0]!.init.body)).topic, 'deploys')
+    assert.equal(
+      (calls[0]!.init.headers as Record<string, string>)['authorization'],
+      'Bearer row-token',
+      'the row token still covers it',
+    )
+
+    await ctx.notify.deliverTo(message, {
+      channel: 'ntfy',
+      settings: { topic: 'private', server: 'https://ntfy.example.test/', token: 'target-token' },
+    })
+    assert.equal(calls[1]!.url, 'https://ntfy.example.test/')
+    assert.equal(JSON.parse(String(calls[1]!.init.body)).topic, 'private')
+    assert.equal(
+      (calls[1]!.init.headers as Record<string, string>)['authorization'],
+      'Bearer target-token',
+    )
+
+    // Nothing on the target, so the row decides, as it always did.
+    await ctx.notify.deliverTo(message, { channel: 'ntfy' })
+    assert.equal(JSON.parse(String(calls[2]!.init.body)).topic, 'row-topic')
+    await ctx.fiber.dispose()
+  } finally {
+    restore()
+  }
 })

@@ -80,6 +80,15 @@ export interface ChannelSetting {
   hint?: string
 }
 
+/**
+ * A channel says this delivery is not applicable: not sent, and not failed
+ * either. Throw it from `send` when there is nothing to send to, for instance a
+ * target with no destination and a row with no default. It comes back as a
+ * `skipped` result, so the outbox does not schedule a pass to try again and the
+ * retry policy is never asked.
+ */
+export class ChannelSkip extends Error {}
+
 export interface Channel {
   /** Unique across the application; two fibers of one plugin need two names. */
   name: string

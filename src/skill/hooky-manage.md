@@ -68,8 +68,9 @@ is `{"map":{}}`, and a `tags: []` does not wipe the event's tags.
 
 ## When the channel needs the destination
 
-Some channels take the destination from the target rather than from the composition. Teams is the one
-here: a Workflows webhook url is one Teams channel, so it belongs to the hook.
+Some channels take the destination from the target rather than from the composition, because the
+destination is part of what this hook does: a Workflows webhook url is one Teams channel, an ntfy topic
+is one feed on somebody's phone.
 
 ```sh
 curl -X PUT -H 'authorization: Bearer <token>' -H 'content-type: application/json'   __BASE____API__/hooks/deploy/targets/teams   -d '{"settings":{"webhook":"https://…/triggers/manual/paths/invoke?…&sig=…"}}'
@@ -84,9 +85,18 @@ teams takes:
 | `webhook` | The Workflows trigger url. Which Teams channel this target posts in |
 | `format` | `card` for an Adaptive Card, `text` for a flow built around a plain string |
 
-Two hooks posting in two Teams channels is two targets with two urls, not two plugins. Leave `webhook`
-out and the channel falls back to the url on its own row, which may be empty: then the delivery fails
-with `no webhook url`, and that is the fix, not a bug to report.
+And what ntfy takes:
+
+| Setting | Is |
+|---|---|
+| `topic` | The topic this target publishes to. Anyone who knows a topic can read it |
+| `server` | Only for a target on another instance than the row |
+| `token` | For a protected topic the row's token does not cover |
+
+Two hooks posting in two Teams channels, or on two ntfy topics, is two targets with two settings, not
+two plugins. Leave the setting out and the channel falls back to its own row, which may have nothing:
+then the delivery is **skipped**, with `no topic: set one on this target, or a default on the ntfy row`
+as the reason. That is the fix, not a bug to report, and a skip is never retried.
 
 ## Templates
 

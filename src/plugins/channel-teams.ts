@@ -2,7 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { postJson } from '../core/http.ts'
 import { MatcherSchema } from '../core/schema.ts'
-import type { ChannelSetting, Level, Matcher, Message } from '../core/types.ts'
+import { ChannelSkip, type ChannelSetting, type Level, type Matcher, type Message } from '../core/types.ts'
 
 export const name = 'channel-teams'
 export const inject = ['notify']
@@ -95,11 +95,9 @@ export function apply(ctx: Context, config: Config): void {
     settings: SETTINGS,
     async send(message, signal, settings) {
       const url = settings?.['webhook']?.trim() || config.webhook
+      // Nowhere to post is not a failure: retrying finds the same nowhere.
       if (url === '') {
-        // Not a crash: this comes back as a failed delivery naming the fix.
-        throw new Error(
-          'no webhook url: set one on this target, or a default on the teams row',
-        )
+        throw new ChannelSkip('no webhook url: set one on this target, or a default on the teams row')
       }
       const format = settings?.['format'] === 'text' || settings?.['format'] === 'card'
         ? settings['format']
