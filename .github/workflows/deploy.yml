@@ -18,6 +18,9 @@ concurrency:
 jobs:
   deploy:
     name: Deploy hooky.sander.ninja
+    # This branch lives on two remotes; only one of them deploys. Without this
+    # the mirror requests an OIDC token of its own and fails the check.
+    if: github.repository == 'sjroesink/hooky'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
