@@ -111,7 +111,8 @@ One url answers the question, and you decide what an answer is:
 
 How the answers look is the channel's business, not yours: Telegram and ntfy turn them into buttons,
 and a channel without buttons gets one line per answer under the body. You send the same thing either
-way.
+way. `replyUrl` opens as a page that lists every answer, so a person who only has that url can still
+pick one.
 
 `ask.wait` is seconds to hold this call, capped by the instance and five minutes by default. `0` sends
 the question and answers at once. `answered: null` means the wait ran out while the question was still

@@ -312,12 +312,53 @@ test('an answer the question never offered is not an answer', async (t) => {
   assert.equal((await reply(`${open.body.ask!.replyUrl}/4`)).status, 200)
 })
 
-test('the bare reply url does not answer a GET', async (t) => {
+test('the bare reply url lists every answer, and answers none of them', async (t) => {
+  const { post, statusOf } = await stack(t, { waitMs: 0 })
+  const answer = await post({
+    title: 'Deploy 4471?',
+    ask: { actions: [{ title: 'yes' }, { title: 'no, later' }, { title: 'the diff', url: 'https://ci.test/1' }] },
+  })
+  const ask = answer.body.ask!
+
+  const page = await fetch(ask.replyUrl)
+  assert.equal(page.status, 200)
+  const html = await page.text()
+  assert.match(html, /Deploy 4471\?/)
+  assert.match(html, /Pick one of 2/)
+  // One form per answer, so opening this page picks nothing.
+  assert.ok(html.includes(`<form method="post" action="${ask.replyUrl}/yes"><button type="submit">yes</button>`), html)
+  assert.ok(html.includes(`<form method="post" action="${ask.replyUrl}/no-later"><button type="submit">no, later</button>`))
+  assert.ok(html.includes('<a href="https://ci.test/1">the diff</a>'), 'a link stays a link')
+  assert.equal((await statusOf(ask)).answered, null)
+
+  // A machine asking the same url gets the ask itself.
+  const json = await fetch(ask.replyUrl, { headers: { accept: 'application/json' } })
+  assert.equal(json.status, 200)
+  assert.equal(((await json.json()) as AskView).id, ask.id)
+})
+
+test('a question with nothing to pick says so on its page', async (t) => {
   const { post } = await stack(t, { waitMs: 0 })
-  const answer = await post({ title: 'Deploy?', ask: true })
-  const opened = await fetch(answer.body.ask!.replyUrl, { headers: { accept: 'application/json' } })
-  assert.equal(opened.status, 405)
-  assert.equal(opened.headers.get('allow'), 'POST')
+  const answer = await post({ title: 'Five questions', ask: true })
+  const html = await (await fetch(answer.body.ask!.replyUrl)).text()
+  assert.match(html, /answered by posting to this url/)
+  assert.equal(html.includes('<form'), false)
+})
+
+test('the page of an answered or expired question says which', async (t) => {
+  const { post, reply } = await stack(t, { waitMs: 0, confirm: false })
+  const open = await post({ title: 'Deploy?', ask: YES_NO })
+  await reply(open.body.ask!.actions[0]!.url)
+  const answered = await fetch(open.body.ask!.replyUrl)
+  assert.equal(answered.status, 409)
+  assert.match(await answered.text(), /Already answered/)
+
+  const short = await stack(t, { waitMs: 0, keepMs: 1 })
+  const stale = await short.post({ title: 'Deploy?', ask: YES_NO })
+  await sleep(20)
+  const expired = await fetch(stale.body.ask!.replyUrl)
+  assert.equal(expired.status, 410)
+  assert.match(await expired.text(), /Expired/)
 })
 
 test('an expired link answers nothing', async (t) => {

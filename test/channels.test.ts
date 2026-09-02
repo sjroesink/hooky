@@ -5,7 +5,7 @@ import * as ntfyChannel from '../src/plugins/channel-ntfy.ts'
 import * as teamsChannel from '../src/plugins/channel-teams.ts'
 import { envelope } from '../src/plugins/channel-teams.ts'
 import * as telegramChannel from '../src/plugins/channel-telegram.ts'
-import { format } from '../src/plugins/channel-telegram.ts'
+import { buttonable, format } from '../src/plugins/channel-telegram.ts'
 import * as hooksPlugin from '../src/plugins/hooks.ts'
 import type { MessageAction } from '../src/core/types.ts'
 import { captureFetch, event } from './helpers.ts'
@@ -416,6 +416,45 @@ test('telegram puts the answers in buttons and leaves the text alone', async () 
   } finally {
     restore()
   }
+})
+
+test('telegram puts the answers in the text when a button url will not fly', async () => {
+  const { calls, restore } = captureFetch()
+  try {
+    const ctx = new Context()
+    await ctx.plugin(hooksPlugin)
+    await ctx.plugin(telegramChannel, { token: 't', chatId: '1' })
+
+    // What an instance without a public url produces. Telegram answers 400 for
+    // the whole message on a button url like this, so it must not send one.
+    const local = [
+      { value: 'yes', title: 'yes', url: 'http://localhost:3112/ask/reply/abc/yes', reply: true },
+    ]
+    await ctx.inject(['notify'], async (child) => {
+      await child.notify.deliverTo(
+        { title: 'Deploy?', body: 'to prod', level: 'warning', tags: [], actions: local, event: event() },
+        { channel: 'telegram' },
+      )
+    })
+
+    const body = JSON.parse(String(calls[0]!.init.body))
+    assert.equal('reply_markup' in body, false)
+    assert.match(body.text, /yes: http:..localhost:3112.ask.reply.abc.yes/)
+    await ctx.fiber.dispose()
+  } finally {
+    restore()
+  }
+})
+
+test('what telegram will and will not put in a button', () => {
+  assert.equal(buttonable([{ value: 'a', title: 'a', url: 'https://hooky.example.com/x', reply: true }]), true)
+  assert.equal(buttonable([{ value: 'a', title: 'a', url: 'http://localhost:3112/x', reply: true }]), false)
+  assert.equal(buttonable([{ value: 'a', title: 'a', url: 'http://127.0.0.1:3112/x', reply: true }]), false)
+  assert.equal(buttonable([{ value: 'a', title: 'a', url: 'http://hooky.local/x', reply: true }]), false)
+  assert.equal(buttonable([{ value: 'a', title: 'a', url: 'http://intranet/x', reply: true }]), false)
+  assert.equal(buttonable([{ value: 'a', title: 'a', url: 'not a url', reply: true }]), false)
+  assert.equal(buttonable([]), false)
+  assert.equal(buttonable(undefined), false)
 })
 
 test('ntfy takes three answers as buttons and puts the rest back in the text', async () => {

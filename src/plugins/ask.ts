@@ -163,13 +163,17 @@ export function apply(ctx: Context, config: Config): void {
   ctx.server.route('POST', REPLY, (request) => reply(request))
   ctx.server.route('POST', `${REPLY}/:action`, (request) => reply(request))
 
-  // Nothing to read on the bare url: an answer is a POST, and a GET here is
-  // usually somebody pasting the url into a browser.
-  ctx.server.route('GET', REPLY, () => ({
-    status: 405,
-    headers: { ...cors, allow: 'POST' },
-    body: { error: 'post an answer to this url, or open one of the answer urls' },
-  }))
+  // The question with everything that answers it. Somebody who lands here got
+  // the bare url out of a message or a log, and a list is a better answer than
+  // a 405 telling them what they did wrong.
+  ctx.server.route('GET', REPLY, async (request) => {
+    const ask = await ctx.store.getAsk(request.params['ask'] ?? '')
+    if (!ask) return closed(request, 'unknown')
+    if (wantsJson(request)) return { status: 200, body: viewOf(ask), headers: cors }
+    if (ask.answered) return closed(request, 'already', ask)
+    if (ask.expiresAt <= Date.now()) return closed(request, 'expired', ask)
+    return index(ask)
+  })
 
   ctx.server.route('GET', `${REPLY}/:action`, async (request) => {
     if (!config.confirm) return reply(request)
@@ -244,6 +248,35 @@ export function apply(ctx: Context, config: Config): void {
   function titleFor(ask: StoredAsk, action: string | null): string {
     if (action === null) return 'Answered'
     return ask.actions.find((one) => one.value === action)?.title ?? action
+  }
+
+  /**
+   * Every answer on one page, each a form of its own so a crawler cannot pick
+   * one: a GET lists, a POST answers, and that split is the whole protection.
+   */
+  function index(ask: StoredAsk): RouteResponse {
+    const answers = ask.actions.filter((one) => one.reply)
+    const links = ask.actions.filter((one) => !one.reply)
+    const card = [`<h1>${esc(ask.question)}</h1>`]
+
+    if (answers.length === 0) {
+      card.push('<p>This one is answered by posting to this url. There is nothing to pick here.</p>')
+    } else {
+      card.push(`<p>${answers.length === 1 ? 'One answer.' : `Pick one of ${answers.length}.`}</p>`)
+      card.push('<div class="stack">')
+      for (const answer of answers) {
+        card.push(
+          `<form method="post" action="${esc(answer.url)}"><button type="submit">${esc(answer.title)}</button></form>`,
+        )
+      }
+      card.push('</div>')
+    }
+    if (links.length > 0) {
+      const shown = links.map((one) => `<a href="${esc(one.url)}">${esc(one.title)}</a>`)
+      card.push(`<p>Also here: ${shown.join(' · ')}</p>`)
+    }
+    card.push(`<p class="q">Open for another ${remaining(ask.expiresAt)}.</p>`)
+    return page(200, ask.question, card)
   }
 
   function confirm(ask: StoredAsk, action: string | null): RouteResponse {
@@ -413,6 +446,16 @@ function esc(text: string): string {
     .replace(/"/g, '&quot;')
 }
 
+/** How much longer, in words. A page a person reads has no use for an epoch. */
+function remaining(expiresAt: number): string {
+  const seconds = Math.max(0, Math.round((expiresAt - Date.now()) / 1000))
+  if (seconds < 90) return `${seconds} seconds`
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 90) return `${minutes} minutes`
+  const hours = Math.round(minutes / 60)
+  return hours === 1 ? 'hour' : `${hours} hours`
+}
+
 function when(at: number): string {
   return new Date(at).toISOString().slice(0, 19).replace('T', ' ') + ' UTC'
 }
@@ -439,6 +482,8 @@ function page(status: number, title: string, card: string[]): RouteResponse {
     'p:last-child { margin-bottom: 0; }',
     '.q { padding-top: 12px; border-top: 1px solid var(--line); }',
     '.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }',
+    '.stack { display: grid; gap: 8px; }',
+    'a { color: inherit; text-underline-offset: 2px; }',
     'form { margin: 0; }',
     'button { width: 100%; padding: 13px 16px; cursor: pointer;',
     '  font: 600 15px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;',

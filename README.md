@@ -160,14 +160,21 @@ to be tapped, which is how "open the form" sits next to "not now".
 view buttons, three of them, with anything that does not fit going back under the text. They declare
 `actions: true` and then `notify` leaves their body alone, so the same question reads as buttons on a
 phone and as lines in a log. Teams and console take the lines: Microsoft lists buttons not rendering as
-a known issue for cards the flow bot posts, so there is nothing to gain there. One thing to know if
-your questions reach Telegram: it validates the url on a button, so give that instance a public
-`publicUrl` rather than a localhost one.
+a known issue for cards the flow bot posts, so there is nothing to gain there.
+
+Telegram validates a button url and answers `400` for the whole message if it does not like one, and
+`http://localhost:3112/ask/reply/…` is one it does not like. So the channel checks first and falls back
+to the lines in the text, because a notification with awkward links beats no notification at all. Give
+an instance whose questions reach Telegram a public `publicUrl` and it gets the buttons.
 
 **Opening an answer url shows a page with one button.** That is not politeness. Telegram fetches the
 urls in a message to build a link preview, so a link that answers on the GET is clicked by that crawler
 before you ever see it. The button posts, and nothing prefetches a POST. `confirm: false` turns the page
 off if you know better for your own channels.
+
+Opening the reply url itself lists the answers, each as its own form, so somebody who has only that url
+can still pick one. A GET lists and a POST answers, and that split is all the protection there is here.
+With `accept: application/json` the same url hands back the ask instead of the page.
 
 First answer wins, and one `UPDATE ... WHERE answered_at IS NULL` decides it, so a second reply reads
 "already answered yes" instead of overwriting anything. A question lasts `keepMs`, an hour by default,
