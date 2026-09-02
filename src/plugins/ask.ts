@@ -137,9 +137,7 @@ export function apply(ctx: Context, config: Config): void {
   /** The answers on the message, so a channel can render them. */
   ctx.on('notify/render', async (event, next) => {
     const message = await next()
-    // The cheap check first: only an event that looks like a question costs a query.
-    if (!looksLikeAsk(event)) return message
-    const ask = await ctx.store.askForEvent(event.id)
+    const ask = await askFor(event)
     if (!ask?.actions.length) return message
     return { ...message, actions: ask.actions }
   })
@@ -147,8 +145,7 @@ export function apply(ctx: Context, config: Config): void {
   /** The block in the answer, and the waiting. */
   ctx.on('hook/answer', async (answer, event, next) => {
     const base = await next()
-    if (!looksLikeAsk(event)) return base
-    const ask = await ctx.store.askForEvent(event.id)
+    const ask = await askFor(event)
     if (!ask) return base
 
     const answered =
@@ -324,8 +321,19 @@ export function apply(ctx: Context, config: Config): void {
     for (const finish of [...(waiting.get(id) ?? [])]) finish(answer)
   }
 
-  function looksLikeAsk(event: HookEvent): boolean {
-    return parseAsk(event.payload, config.maxActions) !== undefined
+  /**
+   * The question this event carries. The cheap check comes first, so only an
+   * event that looks like one costs a query.
+   *
+   * A replay is a new event with the same payload, and its question is still the
+   * original one: the same links go out again, which is the whole point of
+   * replaying a question nobody could answer because the channel was down.
+   */
+  async function askFor(event: HookEvent): Promise<StoredAsk | undefined> {
+    if (parseAsk(event.payload, config.maxActions) === undefined) return undefined
+    const own = await ctx.store.askForEvent(event.id)
+    if (own || event.replayOf === undefined) return own
+    return ctx.store.askForEvent(event.replayOf)
   }
 
   /** A caller may bring its own id, so its page can hold the reply url first. */

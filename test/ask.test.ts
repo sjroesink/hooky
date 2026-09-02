@@ -479,6 +479,25 @@ test('the ask routes are open cross-origin', async (t) => {
   assert.equal((await fetch(ask.statusUrl)).headers.get('access-control-allow-origin'), '*')
 })
 
+test('a replay sends the same question again', async (t) => {
+  // Telegram was down, the question never arrived, so it goes out once more.
+  // Same links, because the question is the original one and still open.
+  const { ctx, post, seen, reply, statusOf } = await stack(t, { waitMs: 0 })
+  const answer = await post({ title: 'Deploy?', ask: YES_NO })
+  const ask = answer.body.ask!
+
+  const first = await ctx.store.get(answer.body.id)
+  assert.ok(first)
+  await ctx.hooks.submit({ ...first.event, id: 'replayed-1', receivedAt: Date.now(), replayOf: first.event.id })
+  await sleep(400)
+
+  const again = seen.at(-1)!
+  assert.equal(again.event.replayOf, first.event.id)
+  assert.deepEqual(again.actions, ask.actions, 'the same urls, not a second question')
+  assert.equal((await reply(ask.actions[0]!.url)).status, 200)
+  assert.equal((await statusOf(ask)).answered?.action, 'yes')
+})
+
 test('a call without an ask is untouched', async (t) => {
   const { post, seen } = await stack(t, { waitMs: 0 })
   const answer = await post({ title: 'just a notification', message: 'nothing to answer' })

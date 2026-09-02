@@ -51,10 +51,40 @@ curl -H 'authorization: Bearer <token>' __BASE____API__/events/<id>
 | `nextAttemptAt` | When the next pass is due, in epoch ms |
 | `deliveries` | The latest record per channel. `attempts` in there is that channel's own tries inside one pass |
 | `payload` | The body as the caller sent it, which is what a template can reach |
+| `ask` | Only when the call asked a question. What was asked, what could answer it, and what came back |
 
 A `pending` event with a `nextAttemptAt` in the future is not a problem, it is the queue doing its job.
 The backoff grows per pass and it survives a restart. Do not send the same notification again to force
 it: that is a second notification, and the first one is still coming.
+
+## A call that asked something
+
+A call with an `ask` in its payload asked a question, and `GET __API__/events/<id>` carries the whole of
+it. The list does not: this is the one endpoint that joins it on.
+
+```json
+{ "id": "34ef85…", "hook": "sander", "title": "Deploy 4471 to prod?", "outcome": "delivered",
+  "ask": { "id": "8f2aQ1xK…",
+           "replyUrl": "__BASE__/ask/reply/8f2aQ1xK…",
+           "statusUrl": "__BASE__/ask/8f2aQ1xK…",
+           "expiresAt": 1788251712000,
+           "actions": [ { "value": "yes", "title": "yes", "url": "…/yes", "reply": true },
+                        { "value": "no",  "title": "no",  "url": "…/no",  "reply": true } ],
+           "answered": { "action": "yes", "at": 1788251650123 } } }
+```
+
+`answered` is `null` when nobody replied. Then look at `expiresAt`: in the future means the question is
+still open and the urls still work, in the past means it expired and nothing can answer it any more.
+`answered.action` is the `value` that was picked, `null` when the reply only carried a body, and
+`answered.data` is that body, exactly as it was posted.
+
+Three things not to do with this. Do not answer the question from here: those urls answer on a POST and
+you would be replying on somebody else's behalf. Do not paste one into a ticket or a chat, because
+whoever holds a reply url can answer with it. And do not read a missing answer as a no: it means nobody
+replied, and a `results` record that says nothing was sent means nobody could.
+
+A replay of a question sends the same links again, and they still work as long as the question is open.
+It does not ask a second question.
 
 ## Nothing arrived at all
 
