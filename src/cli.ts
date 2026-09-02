@@ -250,7 +250,7 @@ const commands: Record<string, Command> = {
       '--tag': 'tag template, repeatable; replaces the tags',
       '--min-level': 'only deliver to this channel from this level up',
       '--only-tag': 'only deliver when the event carries this tag, repeatable',
-      '--set': 'channel setting key=value, repeatable; teams takes webhook and format',
+      '--set': 'channel setting key=value, repeatable; teams takes webhook, webhook takes url, method, headers and body',
     },
     async run(argv, flags) {
       const map: Record<string, unknown> = {}

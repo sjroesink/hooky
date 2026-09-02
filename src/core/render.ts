@@ -15,6 +15,28 @@ export function render(event: HookEvent): Message {
 }
 
 /**
+ * The message as a program receives it: the shaped fields, the tags, the answers
+ * to a question when there are any, and the payload as it came in. The sse
+ * channel streams this and the webhook channel posts it, so the two cannot drift
+ * apart into two dialects of the same thing.
+ */
+export function envelopeOf(message: Message): Record<string, unknown> {
+  return {
+    id: message.event.id,
+    hook: message.event.hook,
+    receivedAt: message.event.receivedAt,
+    level: message.level,
+    title: message.title,
+    body: message.body,
+    ...(message.url === undefined ? {} : { url: message.url }),
+    tags: message.tags,
+    ...(message.actions?.length ? { actions: message.actions } : {}),
+    ...(message.event.replayOf === undefined ? {} : { replayOf: message.event.replayOf }),
+    payload: message.event.payload,
+  }
+}
+
+/**
  * Apply one target's map, so the same event can read differently per channel.
  * Templates resolve against the event, `level` is a plain override. A field the
  * map does not mention keeps what the renderer produced.

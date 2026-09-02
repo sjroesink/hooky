@@ -91,6 +91,8 @@ export interface ChannelSetting {
   label?: string
   /** A credential. It stays out of summaries and logs. */
   secret?: boolean
+  /** Needs more than one line, such as a header block or a body template. */
+  multiline?: boolean
   placeholder?: string
   hint?: string
 }

@@ -108,6 +108,14 @@
     # own secret for that one hook. Couple the channel to a hook first, or the
     # stream endpoint answers 409 and tells you nothing would arrive.
     secret: !!js process.env.HOOKY_SECRET
+- id: webhook
+  name: ./src/plugins/channel-webhook.ts
+  config:
+    # Nothing here on purpose. A url, a method, headers and a body are what
+    # differs per hook, so they live on the target: in the UI, or with
+    # `hooks target <hook> webhook --set url=… --set body=…`. A target without a
+    # url is skipped and says so.
+    url: !!js process.env.WEBHOOK_URL ?? ''
 - id: ntfy
   name: ./src/plugins/channel-ntfy.ts
   config:

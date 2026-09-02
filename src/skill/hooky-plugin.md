@@ -94,6 +94,9 @@ export function apply(ctx: Context, config: Config): void {
 }
 ```
 
+A setting with `multiline: true` gets a textarea instead of an input, for something that does not fit
+on one line: `channel-webhook.ts` declares it for its header block and its body template.
+
 Declare `settings` when the destination belongs to the hook rather than to the composition. A Teams
 webhook url is one Teams channel and an ntfy topic is one feed, so `channel-teams.ts` and
 `channel-ntfy.ts` both put it there and one row serves every hook. Config stays the fallback, and a
@@ -111,10 +114,18 @@ answer, which is why a channel that has never heard of a question still shows a 
 declare it if you render every action: a channel with a limit of its own is responsible for what it
 cannot fit, and `appendActions` from `src/core/ask.ts` is there for the rest.
 
+`channel-webhook.ts` is the other end of that idea: everything about the destination is a setting, so
+one row serves every hook and a target says where it posts, with which method, headers and body. It is
+worth reading for two reusable pieces. `interpolate` takes an escaper, so a template can fill a JSON or
+a form body without a quote in a title breaking it. And `envelopeOf` from `src/core/render.ts` is the
+one shape a program receives, shared with `channel-sse.ts` so the two cannot drift into two dialects.
+
 `send` rejects on failure and that is the whole error protocol: the retry policy and the outbox read the
 rejection, not a status code. `signal` aborts when your fiber unloads, so pass it into `fetch` and a
 reload never leaves a request hanging. `postJson` in `src/core/http.ts` already does both, and makes a
-non-2xx read the same as it does for Telegram and ntfy. `match` is optional and mostly historical: with
+non-2xx read the same as it does for Telegram and ntfy. Doing your own `fetch` is fine when `postJson`
+does not fit, as long as you hand the response to `assertOk` from that same file, so one failure reads
+one way everywhere. `match` is optional and mostly historical: with
 the routes plugin loaded the hook decides who gets what, so a new channel usually has no matcher.
 
 ## A normalizer

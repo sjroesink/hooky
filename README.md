@@ -247,6 +247,9 @@ data: {"id":"34ef85…","hook":"deploys","receivedAt":1788251650123,"level":"war
        "title":"deployed 4471","body":"12 commits","tags":["deploy"],"payload":{…}}
 ```
 
+That frame is `envelopeOf` from `src/core/render.ts`, and the webhook channel posts the same object,
+so a program can move from a stream to a callback without learning a second shape.
+
 Because it is a channel and not a side door, everything a hook already decides still decides: the
 target's matcher filters, its mapping shapes, and the delivery shows up in the history next to Telegram
 and ntfy. A question on that hook arrives with its `actions` as a list rather than as lines of text,
@@ -508,6 +511,50 @@ sets the Adaptive Card version, which Teams renders from 1.0 through 1.5.
 Teams throttles above four requests per second and refuses a message over 28 KB. The `rate-limit` row
 covers the first at 20 per minute per channel. For the second, keep a mapped payload dump out of the
 body of a hook that targets Teams.
+
+## Calling another webhook
+
+The other direction: a hook that calls a webhook somewhere else. `webhook` is a target like any other,
+and the four things that differ per destination sit on the target, because a url, a method, a header
+block and a body are not properties of the installation.
+
+```sh
+node src/cli.ts hooks target deploys webhook \
+  --set 'url=https://n8n.example/webhook/deploys' \
+  --set 'method=PUT' \
+  --set 'body={"text": "{{title}}", "build": "{{payload.buildId}}"}'
+```
+
+Headers are one `name: value` per line, `#` starts a comment, and the value is a template, so
+`x-level: {{level}}` works. A shell cannot type a newline into a flag, so a block of them is easier
+from the interface or over the API, where `\n` is a JSON escape and arrives as a real newline.
+
+**The body escapes for its content type.** A value substituted into a JSON body lands JSON-escaped
+without its quotes, and one in a form body is percent-encoded. So `{"text": "{{title}}"}` survives a
+title like `he said "no"` instead of posting broken JSON and blaming the other side. Leave the body
+empty and the event goes out as the same JSON envelope the sse channel streams, which is what a program
+on the other end wants anyway. The template resolves against the message as this target shaped it, so a
+`map.title` and a body template compose rather than disagree.
+
+Two things to know before you point one somewhere. The url is a template too, and
+`{{payload.callbackUrl}}` hands the choice of destination to whoever posts to the hook: exactly what an
+agent that says where to call back needs, and only sensible on a hook whose callers you trust. And a
+webhook aimed at a hook on this same instance is a loop, which is why every call carries
+`x-hooky-event` with the event id, next to `x-hooky-hook` and `user-agent: hooky`.
+
+```
+POST /hooks/deploys  ->  telegram  deployed 4471
+                         webhook   PUT https://n8n.example/webhook/deploys   200
+```
+
+A target with no url is **skipped** and says so, and so is a method or a header line nobody can parse:
+a typo does not fix itself on the fourth attempt, and a skip puts the reason where someone reads it. A
+non-2xx is a real failure carrying the status and the first 300 characters the other side said, so the
+outbox retries it like any other delivery.
+
+Two rows with different `channel` names is two destinations, `webhook-n8n` and `webhook-ha`, and then
+one hook can call both.
+
 
 ## Composition
 

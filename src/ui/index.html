@@ -1413,7 +1413,9 @@ function targetSummary(target) {
   if (target.match?.tags?.length) parts.push(`only tagged ${target.match.tags.join(', ')}`)
   // A setting can be a credential, so the summary says which one is set, not what it says.
   for (const [key, value] of Object.entries(target.settings ?? {})) {
-    parts.push(secretSetting(target.channel, key) ? `own ${key}` : `${key} ${value}`)
+    // A header block or a body template is many lines; the summary is one.
+    const flat = String(value).replace(/\s+/g, ' ').trim()
+    parts.push(secretSetting(target.channel, key) ? `own ${key}` : `${key} ${flat}`)
   }
   // Empty when nothing is set. A target with no mapping forwards the event as it
   // stands, and a line saying so is a line to read past.
@@ -1620,9 +1622,14 @@ function settingFields(target) {
     .map(
       (one) => `
       <label for="s-${esc(one.key)}">${esc(one.label ?? one.key)}</label>
-      <input id="s-${esc(one.key)}" data-setting="${esc(one.key)}" autocomplete="off"
-             spellcheck="false" value="${esc(values[one.key] ?? '')}"
-             placeholder="${esc(one.placeholder ?? '')}">
+      ${
+        one.multiline
+          ? `<textarea id="s-${esc(one.key)}" data-setting="${esc(one.key)}" spellcheck="false"
+                       placeholder="${esc(one.placeholder ?? '')}">${esc(values[one.key] ?? '')}</textarea>`
+          : `<input id="s-${esc(one.key)}" data-setting="${esc(one.key)}" autocomplete="off"
+                    spellcheck="false" value="${esc(values[one.key] ?? '')}"
+                    placeholder="${esc(one.placeholder ?? '')}">`
+      }
       ${one.hint ? `<div class="hint">${esc(one.hint)}</div>` : ''}`,
     )
     .join('')
@@ -2299,8 +2306,8 @@ function editorTarget() {
   // Whatever the channel asked for. An empty field is not a setting: the server
   // drops it, and the channel falls back to its own row.
   const settings = {}
-  for (const input of document.querySelectorAll('#hook-detail .editor input[data-setting]')) {
-    if (input.value.trim()) settings[input.dataset.setting] = input.value.trim()
+  for (const field of document.querySelectorAll('#hook-detail .editor [data-setting]')) {
+    if (field.value.trim()) settings[field.dataset.setting] = field.value.trim()
   }
 
   return { map, match, settings }

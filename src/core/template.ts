@@ -24,10 +24,23 @@ export function scopeOf(event: HookEvent): Record<string, unknown> {
   }
 }
 
-/** Replace every `{{path}}`. A path that resolves to nothing becomes empty. */
-export function interpolate(template: string, event: HookEvent): string {
+/**
+ * Replace every `{{path}}`. A path that resolves to nothing becomes empty.
+ *
+ * `escape` decides how a value is written into the template. A message goes out
+ * as text and needs none, but a JSON body would break on a quote in a title, so
+ * a caller that builds one passes the escaping its format wants.
+ */
+export function interpolate(
+  template: string,
+  event: HookEvent,
+  escape?: (value: string) => string,
+): string {
   const scope = scopeOf(event)
-  return template.replace(PLACEHOLDER, (_match, path: string) => stringify(lookup(scope, path)))
+  return template.replace(PLACEHOLDER, (_match, path: string) => {
+    const value = stringify(lookup(scope, path))
+    return escape ? escape(value) : value
+  })
 }
 
 /** Names a template can use, for an error message or a UI hint. */

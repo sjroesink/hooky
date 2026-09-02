@@ -14,8 +14,20 @@ export async function postJson(options: {
     body: JSON.stringify(options.payload),
     signal: AbortSignal.any([options.signal, AbortSignal.timeout(options.timeoutMs)]),
   })
-  if (!response.ok) {
-    const detail = (await response.text().catch(() => '')).slice(0, 300)
-    throw new Error(`${options.label} responded ${response.status}: ${detail}`)
+  await assertOk(response, options.label)
+}
+
+/**
+ * How a non-2xx reads, wherever a channel does its own fetch: the status and the
+ * first 300 characters the other side said, because that is usually the whole
+ * explanation. A success body is released rather than read, since nothing
+ * consumes it and holding it holds the socket.
+ */
+export async function assertOk(response: Response, label: string): Promise<void> {
+  if (response.ok) {
+    await response.body?.cancel().catch(() => {})
+    return
   }
+  const detail = (await response.text().catch(() => '')).slice(0, 300)
+  throw new Error(`${label} responded ${response.status}: ${detail}`)
 }

@@ -1,6 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { constantTimeEquals } from '../core/routes.ts'
+import { envelopeOf } from '../core/render.ts'
 import { MatcherSchema } from '../core/schema.ts'
 import type { RouteRequest } from '../core/server.ts'
 import { ChannelSkip, type Matcher, type Message } from '../core/types.ts'
@@ -199,23 +200,10 @@ function tokenOf(request: RouteRequest): string {
 }
 
 /**
- * One event as one frame. `data` is a single line because JSON escapes its own
- * newlines, and the event id doubles as the SSE id so a client can tell a replay
- * from a first delivery.
+ * One event as one frame. `data` is `envelopeOf` on a single line, because JSON
+ * escapes its own newlines, and the event id doubles as the SSE id so a client
+ * can tell a replay from a first delivery.
  */
 export function frameOf(message: Message): string {
-  const data = {
-    id: message.event.id,
-    hook: message.event.hook,
-    receivedAt: message.event.receivedAt,
-    level: message.level,
-    title: message.title,
-    body: message.body,
-    ...(message.url === undefined ? {} : { url: message.url }),
-    tags: message.tags,
-    ...(message.actions?.length ? { actions: message.actions } : {}),
-    ...(message.event.replayOf === undefined ? {} : { replayOf: message.event.replayOf }),
-    payload: message.event.payload,
-  }
-  return `id: ${message.event.id}\nevent: message\ndata: ${JSON.stringify(data)}\n\n`
+  return `id: ${message.event.id}\nevent: message\ndata: ${JSON.stringify(envelopeOf(message))}\n\n`
 }

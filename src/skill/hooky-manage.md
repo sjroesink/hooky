@@ -140,6 +140,41 @@ a stream that can never carry anything looks like a broken connection.
 It is a channel like any other, so `skipped · nobody is listening on this hook` in the history means
 exactly that and is not a fault to chase.
 
+## A hook that calls another webhook
+
+If the instance has a `webhook` channel, a hook can call out instead of, or as well as, telling a
+person:
+
+```sh
+curl -X PUT -H 'authorization: Bearer <token>' -H 'content-type: application/json' \
+  __BASE____API__/hooks/deploys/targets/webhook \
+  -d '{"settings":{
+        "url":"https://n8n.example/webhook/deploys",
+        "method":"PUT",
+        "headers":"authorization: Bearer flow-token\nx-level: {{level}}",
+        "body":"{\"text\": \"{{title}}\", \"build\": \"{{payload.buildId}}\"}"
+      }}'
+```
+
+| Setting | Is |
+|---|---|
+| `url` | Where it posts. A template, so `{{payload.callbackUrl}}` lets the caller name the destination |
+| `method` | POST, PUT, PATCH, DELETE or GET. A GET carries no body |
+| `headers` | One `name: value` per line, `#` for a comment, templates in the value. Counts as a credential |
+| `body` | Templated. Empty sends the event as JSON, the shape the sse channel streams |
+
+A value in a JSON body lands JSON-escaped, so a quote in a title cannot break the body. The template
+reads the message as this target shaped it, so a `map` and a body template compose.
+
+A target with no url is skipped, and so is a method or a header line that cannot be read: those are
+typos, and no number of retries fixes one. A non-2xx is a failure with the status in it, retried like
+any other delivery.
+
+Two rules of thumb. A url out of the payload means whoever posts to that hook decides where this
+instance connects, so use it only on a hook you control the callers of. And never point a webhook
+target at a hook on this same instance: that is a loop, and the events it makes are hard to tell from
+real ones.
+
 ## Templates
 
 `{{path}}` resolves against the event. A path that resolves to nothing becomes an empty string, an
@@ -214,6 +249,9 @@ the instance disagree, because the catalogue comes from the code.
 7. A reply link to an open question is a capability: whoever holds it answers the question, with no
    secret of their own. They sit in the database until they expire, so a copy of the file is a copy of
    every open question. Nothing to configure, only something to know before you pass one on.
+8. A `webhook` target makes this instance call somebody else. Point it at an endpoint the person
+   asking for the hook actually owns, and keep the token for it in that target's `headers`, which is
+   where a credential belongs.
 
 ## The other skills
 
