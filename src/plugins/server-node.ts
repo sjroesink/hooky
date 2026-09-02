@@ -124,7 +124,9 @@ class NodeServer extends Service implements ServerService {
         headers,
         body,
       }
-      this.write(response, await found.route.handler(payload))
+      const result = await found.route.handler(payload)
+      if (result.stream) return await this.pipe(response, result, result.stream)
+      this.write(response, result)
     } catch (error) {
       if (error instanceof TooLarge) {
         return this.write(response, {
@@ -154,6 +156,44 @@ class NodeServer extends Service implements ServerService {
     return Buffer.concat(chunks).toString('utf8')
   }
 
+  /**
+   * An open-ended response. The headers go out before the first chunk, so a
+   * client knows the stream is up, and no content-length goes with them. The
+   * socket closing cancels the stream, which is how a subscriber is cleaned up
+   * when the reader on the other side walks away.
+   */
+  private async pipe(
+    response: ServerResponse,
+    result: RouteResponse,
+    stream: ReadableStream<string>,
+  ): Promise<void> {
+    response.writeHead(result.status, {
+      'content-type': 'text/plain; charset=utf-8',
+      ...result.headers,
+    })
+    response.flushHeaders()
+
+    const reader = stream.getReader()
+    let gone = false
+    response.on('close', () => {
+      gone = true
+      void reader.cancel().catch(() => {})
+    })
+    try {
+      while (!gone) {
+        const { value, done } = await reader.read()
+        if (done) break
+        if (value === undefined) continue
+        // Backpressure, in a race with the socket: a client that stopped reading
+        // must not leave this loop waiting for a drain that will never come.
+        if (!response.write(value)) await drain(response)
+      }
+    } catch (error) {
+      this.ctx.logger('server').warn(error)
+    }
+    if (!gone) response.end()
+  }
+
   private write(response: ServerResponse, result: RouteResponse): void {
     const isText = typeof result.body === 'string'
     const body = result.body === undefined ? '' : isText ? (result.body as string) : JSON.stringify(result.body)
@@ -169,4 +209,17 @@ class NodeServer extends Service implements ServerService {
 export async function apply(ctx: Context, config: Config): Promise<void> {
   const server = new NodeServer(ctx, config)
   await server.listen()
+}
+
+/** Wait for the socket to drain, or for it to go away, whichever is first. */
+function drain(response: ServerResponse): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      response.off('drain', done)
+      response.off('close', done)
+      resolve()
+    }
+    response.once('drain', done)
+    response.once('close', done)
+  })
 }

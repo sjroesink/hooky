@@ -20,6 +20,13 @@ export interface RouteResponse {
   /** A string goes out as text, anything else as JSON. */
   body?: unknown
   headers?: Record<string, string>
+  /**
+   * A body with no end to it. The transport writes every chunk as it arrives and
+   * keeps the response open until the stream closes, so no content-length goes
+   * out and `body` is ignored. Cancelling the stream is how the transport says
+   * the client went away.
+   */
+  stream?: ReadableStream<string>
 }
 
 export type RouteHandler = (request: RouteRequest) => Promise<RouteResponse> | RouteResponse

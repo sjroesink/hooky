@@ -101,6 +101,13 @@
     # `hooks target <hook> teams --set webhook=…`. Fill this in only when every
     # hook posts to the same Teams channel.
     webhook: !!js process.env.TEAMS_WEBHOOK ?? ''
+- id: sse
+  name: ./src/plugins/channel-sse.ts
+  config:
+    # A subscriber proves it may listen: this token for any hook, or the hook's
+    # own secret for that one hook. Couple the channel to a hook first, or the
+    # stream endpoint answers 409 and tells you nothing would arrive.
+    secret: !!js process.env.HOOKY_SECRET
 - id: ntfy
   name: ./src/plugins/channel-ntfy.ts
   config:

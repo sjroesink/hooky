@@ -105,6 +105,21 @@ in the payload; `hooky-send` is the document for that side. What matters here is
 out over the channels this hook already has, so a hook that asks should reach a person and not a log.
 A question on a hook whose only target writes to disk is a question nobody will ever answer.
 
+## A hook a program listens to
+
+If the instance has an `sse` channel, coupling it to a hook makes that hook readable as a live stream:
+
+```sh
+curl -X PUT -H 'authorization: Bearer <token>' __BASE____API__/hooks/<hook>/targets/sse -d '{}'
+```
+
+After that `GET __BASE__/sse/<hook>` is a stream of every event on that hook, for whoever holds the
+admin token or that hook's own secret. Without the target the stream endpoint answers 409, on purpose:
+a stream that can never carry anything looks like a broken connection.
+
+It is a channel like any other, so `skipped · nobody is listening on this hook` in the history means
+exactly that and is not a fault to chase.
+
 ## Templates
 
 `{{path}}` resolves against the event. A path that resolves to nothing becomes an empty string, an

@@ -64,7 +64,7 @@ And the services, each provided by a plugin and reachable as `ctx.<name>`:
 
 | Service | Gives you |
 |---|---|
-| `ctx.server` | `route(method, pattern, handler)`, returning a disposer |
+| `ctx.server` | `route(method, pattern, handler)`, returning a disposer. A handler answers `{ status, body }`, or `{ status, stream }` with a `ReadableStream<string>` for something open-ended |
 | `ctx.hooks` | `submit(event, { waitMs })` to feed one in, `dispatch(event)` to send one now |
 | `ctx.notify` | `register(channel)`, `names`, `settings`, `deliverTo(message, target)` |
 | `ctx.store` | The history and the queue: `append`, `get`, `list`, `due`, `recordAttempt`, `stats`, plus the open questions: `saveAsk`, `getAsk`, `answerAsk` |
@@ -100,6 +100,10 @@ webhook url is one Teams channel and an ntfy topic is one feed, so `channel-team
 target that sets nothing gets what the row says. With nothing on either, throw `ChannelSkip` from
 `src/core/types.ts`: that answers `skipped` with your message instead of `failed`, so the retry policy
 is not asked and the outbox does not come back for it.
+
+`channel-sse.ts` is both at once: a channel whose `send` writes to whoever is listening, and a route
+that hands back a stream. Nobody listening throws `ChannelSkip`, so an event no program was watching
+for is not a failed delivery. Read it before you write anything that holds a connection open.
 
 Declare `actions: true` when your channel renders `message.actions` itself, the way a chat with
 buttons does. Then the body stays what the caller wrote; leave it off and `notify` appends one line per

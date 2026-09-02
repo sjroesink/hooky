@@ -217,6 +217,57 @@ The ask routes answer `access-control-allow-origin: *`, so that page can live an
 someone else's domain included. Closing that would protect nothing: the reply url is the capability, and
 a plain form post never asked CORS for permission.
 
+## Listening on a hook
+
+The other half of the return path. A question is for a person; a stream is for a program that wants to
+hear a hook as it happens, without polling the history.
+
+Listening is a channel, `sse`, so registering is nothing new: couple it to a hook and hold the stream
+open.
+
+```sh
+node src/cli.ts hooks target deploys sse
+curl -N -H "x-hooky-secret: $DEPLOYS_SECRET" http://localhost:3000/sse/deploys
+```
+
+```
+retry: 5000
+: listening on deploys
+
+id: 34ef85…
+event: message
+data: {"id":"34ef85…","hook":"deploys","receivedAt":1788251650123,"level":"warning",
+       "title":"deployed 4471","body":"12 commits","tags":["deploy"],"payload":{…}}
+```
+
+Because it is a channel and not a side door, everything a hook already decides still decides: the
+target's matcher filters, its mapping shapes, and the delivery shows up in the history next to Telegram
+and ntfy. A question on that hook arrives with its `actions` as a list rather than as lines of text,
+because a program wants the urls and not the prose.
+
+**Nobody listening is a skip, not a failure.** A stream comes and goes, so an event nobody was watching
+for is not a delivery to retry for an hour. It reads `skipped · nobody is listening on this hook` in
+the interface.
+
+A subscriber proves it may listen, with the admin token for any hook or with that hook's own secret for
+that one hook. Whoever may post to a hook may listen to it, which is the same trust in the other
+direction. The secret may go in the query string, because an `EventSource` in a browser cannot set
+headers, and then it lands in an access log; a header is better when you have the choice.
+
+Two things the endpoint does instead of going quiet on you. A hook that has no `sse` target answers
+`409` and says so, because the alternative is a stream that stays silent forever and looks broken. And
+past `maxClients` streams on one hook it answers `503` rather than accepting a connection it does not
+intend to feed.
+
+There is no replay and no `Last-Event-ID`. What you missed is in `/api/events`, which is a different
+question with a better answer. A comment frame goes out every `heartbeatMs` to keep an idle connection
+alive through a proxy, and the response carries `x-accel-buffering: no` because nginx otherwise buffers
+a live stream into one delivery at the end.
+
+`RouteResponse` grew a `stream` for this: a `ReadableStream<string>` that the transport writes as it
+arrives, with no content-length, and cancels when the socket goes away. That is the whole seam, so a
+plugin that wants to stream something else needs nothing from this one.
+
 ## Durability
 
 The outbox plugin owns persistence. It takes ownership of `hook/submit` by returning without calling
@@ -459,7 +510,7 @@ does nothing on every boot after that.
 
 | Service | Provided by | Consumers get |
 |---|---|---|
-| `ctx.server` | `server-node.ts` | `route(method, pattern, handler)`, `address` |
+| `ctx.server` | `server-node.ts` | `route(method, pattern, handler)`, `address`; a route may answer with a `stream` |
 | `ctx.hooks` | `hooks.ts` | `submit(event)`, `dispatch(event, options)` |
 | `ctx.notify` | `hooks.ts` | `register(channel)`, `names`, `settings`, `deliver(message, skip)`, `deliverTo(message, target)` |
 | `ctx.routes` | `hook-routes.ts` | `list`, `get`, `create`, `setTarget`, `rotate`, `preview`, `run`, `targetsFor` |
