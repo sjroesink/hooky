@@ -156,6 +156,14 @@ they do for anything else.
 An answer with a `url` of its own is a plain link that answers nothing. It rides along in the message
 to be tapped, which is how "open the form" sits next to "not now".
 
+**A channel with buttons uses them.** Telegram puts every answer in an inline keyboard and ntfy in its
+view buttons, three of them, with anything that does not fit going back under the text. They declare
+`actions: true` and then `notify` leaves their body alone, so the same question reads as buttons on a
+phone and as lines in a log. Teams and console take the lines: Microsoft lists buttons not rendering as
+a known issue for cards the flow bot posts, so there is nothing to gain there. One thing to know if
+your questions reach Telegram: it validates the url on a button, so give that instance a public
+`publicUrl` rather than a localhost one.
+
 **Opening an answer url shows a page with one button.** That is not politeness. Telegram fetches the
 urls in a message to build a link preview, so a link that answers on the GET is clicked by that crawler
 before you ever see it. The button posts, and nothing prefetches a POST. `confirm: false` turns the page

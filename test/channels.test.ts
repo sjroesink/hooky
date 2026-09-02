@@ -7,6 +7,7 @@ import { envelope } from '../src/plugins/channel-teams.ts'
 import * as telegramChannel from '../src/plugins/channel-telegram.ts'
 import { format } from '../src/plugins/channel-telegram.ts'
 import * as hooksPlugin from '../src/plugins/hooks.ts'
+import type { MessageAction } from '../src/core/types.ts'
 import { captureFetch, event } from './helpers.ts'
 
 test('telegram sends HTML with chat_id and escapes the text', async () => {
@@ -381,4 +382,93 @@ test('a target publishes to its own ntfy topic, on its own server', async () => 
   } finally {
     restore()
   }
+})
+
+/** Two answers and a link the caller supplied, the way a question arrives. */
+const ANSWERS: MessageAction[] = [
+  { value: 'yes', title: 'yes', url: 'https://h.test/ask/reply/abc/yes', reply: true },
+  { value: 'no', title: 'no', url: 'https://h.test/ask/reply/abc/no', reply: true },
+  { value: 'the-diff', title: 'the diff', url: 'https://ci.test/diff/1', reply: false },
+]
+
+test('telegram puts the answers in buttons and leaves the text alone', async () => {
+  const { calls, restore } = captureFetch()
+  try {
+    const ctx = new Context()
+    await ctx.plugin(hooksPlugin)
+    await ctx.plugin(telegramChannel, { token: 't', chatId: '1' })
+
+    await ctx.inject(['notify'], async (child) => {
+      await child.notify.deliverTo(
+        { title: 'Deploy?', body: 'to prod', level: 'warning', tags: [], actions: ANSWERS, event: event() },
+        { channel: 'telegram' },
+      )
+    })
+
+    const body = JSON.parse(String(calls[0]!.init.body))
+    assert.equal(body.text, '<b>Deploy?</b>\nto prod', 'no urls glued under the text')
+    assert.deepEqual(body.reply_markup.inline_keyboard, [
+      [{ text: 'yes', url: 'https://h.test/ask/reply/abc/yes' }],
+      [{ text: 'no', url: 'https://h.test/ask/reply/abc/no' }],
+      [{ text: 'the diff', url: 'https://ci.test/diff/1' }],
+    ])
+    await ctx.fiber.dispose()
+  } finally {
+    restore()
+  }
+})
+
+test('ntfy takes three answers as buttons and puts the rest back in the text', async () => {
+  const { calls, restore } = captureFetch()
+  try {
+    const ctx = new Context()
+    await ctx.plugin(hooksPlugin)
+    await ctx.plugin(ntfyChannel, { topic: 'alerts' })
+
+    const four = [...ANSWERS, { value: 'later', title: 'later', url: 'https://h.test/ask/reply/abc/later', reply: true }]
+    await ctx.inject(['notify'], async (child) => {
+      await child.notify.deliverTo(
+        { title: 'Deploy?', body: 'to prod', level: 'warning', tags: [], actions: four, event: event() },
+        { channel: 'ntfy' },
+      )
+    })
+
+    const body = JSON.parse(String(calls[0]!.init.body))
+    assert.deepEqual(
+      body.actions.map((one: { action: string; label: string; url: string; clear: boolean }) => one),
+      [
+        { action: 'view', label: 'yes', url: 'https://h.test/ask/reply/abc/yes', clear: false },
+        { action: 'view', label: 'no', url: 'https://h.test/ask/reply/abc/no', clear: false },
+        { action: 'view', label: 'the diff', url: 'https://ci.test/diff/1', clear: false },
+      ],
+      'ntfy shows three',
+    )
+    assert.equal(body.message, 'to prod\n\nlater: https://h.test/ask/reply/abc/later', 'the fourth is not lost')
+    await ctx.fiber.dispose()
+  } finally {
+    restore()
+  }
+})
+
+test('a channel without buttons gets the answers under the body', async () => {
+  const ctx = new Context()
+  await ctx.plugin(hooksPlugin)
+  const seen: { body: string }[] = []
+  await ctx.inject(['notify'], async (child) => {
+    child.notify.register({
+      name: 'plain',
+      async send(message) {
+        seen.push({ body: message.body })
+      },
+    })
+    await child.notify.deliverTo(
+      { title: 'Deploy?', body: 'to prod', level: 'info', tags: [], actions: ANSWERS, event: event() },
+      { channel: 'plain' },
+    )
+  })
+  assert.equal(
+    seen[0]!.body,
+    'to prod\n\nyes: https://h.test/ask/reply/abc/yes\nno: https://h.test/ask/reply/abc/no\nthe diff: https://ci.test/diff/1',
+  )
+  await ctx.fiber.dispose()
 })

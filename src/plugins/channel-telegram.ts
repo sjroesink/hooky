@@ -2,7 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { postJson } from '../core/http.ts'
 import { LevelSchema, MatcherSchema } from '../core/schema.ts'
-import { rank, type Level, type Matcher, type Message } from '../core/types.ts'
+import { rank, type Level, type Matcher, type Message, type MessageAction } from '../core/types.ts'
 
 export const name = 'channel-telegram'
 export const inject = ['notify']
@@ -33,6 +33,9 @@ export function apply(ctx: Context, config: Config): void {
   ctx.notify.register({
     name: config.channel,
     match: config.match,
+    // Telegram has buttons, so a question gets buttons instead of urls in the
+    // text. Every answer fits: there is no limit worth working around here.
+    actions: true,
     async send(message, signal) {
       await postJson({
         url: `${config.apiBase}/bot${config.token}/sendMessage`,
@@ -41,6 +44,7 @@ export function apply(ctx: Context, config: Config): void {
           text: format(message),
           parse_mode: 'HTML',
           ...(config.threadId > 0 ? { message_thread_id: config.threadId } : {}),
+          ...(message.actions?.length ? { reply_markup: keyboard(message.actions) } : {}),
           disable_notification: rank(message.level) < rank(config.silentBelow),
         },
         signal,
@@ -49,6 +53,14 @@ export function apply(ctx: Context, config: Config): void {
       })
     },
   })
+}
+
+/**
+ * One answer per row. A url button needs no callback handler and no bot state,
+ * which is why an answer is a link and not a `callback_data`.
+ */
+export function keyboard(actions: MessageAction[]): Record<string, unknown> {
+  return { inline_keyboard: actions.map((action) => [{ text: action.title, url: action.url }]) }
 }
 
 /** HTML, not MarkdownV2: escaping is three characters instead of eighteen. */

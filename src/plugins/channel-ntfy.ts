@@ -2,7 +2,14 @@ import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { postJson } from '../core/http.ts'
 import { MatcherSchema } from '../core/schema.ts'
-import { ChannelSkip, type ChannelSetting, type Level, type Matcher } from '../core/types.ts'
+import { appendActions } from '../core/ask.ts'
+import {
+  ChannelSkip,
+  type ChannelSetting,
+  type Level,
+  type Matcher,
+  type MessageAction,
+} from '../core/types.ts'
 
 export const name = 'channel-ntfy'
 export const inject = ['notify']
@@ -65,11 +72,37 @@ export const SETTINGS: ChannelSetting[] = [
   },
 ]
 
+/**
+ * ntfy shows at most three action buttons, and a question may offer more. The
+ * ones that do not fit go back into the text, so nothing becomes unanswerable
+ * because of a limit in the app.
+ */
+const BUTTONS = 3
+
+export function buttons(actions: MessageAction[]): Record<string, unknown>[] {
+  return actions.slice(0, BUTTONS).map((action) => ({
+    action: 'view',
+    label: action.title,
+    url: action.url,
+    // Keep the notification after tapping: a question you answered is still
+    // something you want to be able to look back at.
+    clear: false,
+  }))
+}
+
+export function body(text: string, actions: MessageAction[] | undefined): string {
+  const rest = actions?.slice(BUTTONS) ?? []
+  return rest.length === 0 ? text : appendActions(text, rest)
+}
+
 export function apply(ctx: Context, config: Config): void {
   ctx.notify.register({
     name: config.channel,
     match: config.match,
     settings: SETTINGS,
+    // ntfy renders view buttons, three of them, and `body()` puts whatever does
+    // not fit back under the text. So every answer is reachable either way.
+    actions: true,
     async send(message, signal, settings) {
       const topic = settings?.['topic']?.trim() || config.topic
       // Nothing to publish to is not a failure: retrying finds the same nothing.
@@ -85,11 +118,12 @@ export function apply(ctx: Context, config: Config): void {
         payload: {
           topic,
           title: message.title,
-          message: message.body || message.title,
+          message: body(message.body, message.actions) || message.title,
           priority: PRIORITY[message.level],
           tags: [...config.tags, ...message.tags],
           markdown: true,
           ...(message.url ? { click: message.url } : {}),
+          ...(message.actions?.length ? { actions: buttons(message.actions) } : {}),
         },
         headers: token ? { authorization: `Bearer ${token}` } : {},
         signal,

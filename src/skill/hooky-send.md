@@ -109,6 +109,10 @@ One url answers the question, and you decide what an answer is:
 | `ask: true`, or an ask with no actions | Nothing is rendered in the message. Post anything to `replyUrl` and that body is the answer, in `answered.data`. |
 | both | An answer url takes a body too, so "yes, but" can come back with a note attached. |
 
+How the answers look is the channel's business, not yours: Telegram and ntfy turn them into buttons,
+and a channel without buttons gets one line per answer under the body. You send the same thing either
+way.
+
 `ask.wait` is seconds to hold this call, capped by the instance and five minutes by default. `0` sends
 the question and answers at once. `answered: null` means the wait ran out while the question was still
 open, and then you pick it up again:
