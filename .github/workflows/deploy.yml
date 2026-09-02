@@ -1,0 +1,38 @@
+name: Deploy Hooky
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Deployment uses a short-lived GitHub OIDC identity; no repository secret is required.
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-hooky-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy hooky.sander.ninja
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Trigger authenticated Unraid deployment
+        run: |
+          set -euo pipefail
+          token="$(curl --fail --silent --show-error \
+            --header "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=deploy.roes.ink" | jq -r .value)"
+          test -n "$token"
+          response="$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer ${token}" \
+            --header "Content-Type: application/json" \
+            --data '{"stack":"hooky"}' \
+            https://deploy.roes.ink/hooks/deploy)"
+          printf '%s\n' "$response"
+          printf '%s\n' "$response" | grep -Fq 'Deploy voltooid: hooky'
