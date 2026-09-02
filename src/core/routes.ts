@@ -50,6 +50,12 @@ export interface HookDefinition {
   disabled: boolean
   /** SHA-256 of the secret, or null for an open hook. Never the secret itself. */
   secretHash: string | null
+  /**
+   * The moment this hook stops accepting calls, in epoch ms. Absent means it
+   * never does. Past it the definition stays where it is and answers 410, so a
+   * temporary hook goes quiet on its own without taking its history with it.
+   */
+  expiresAt?: number
   targets: HookTarget[]
   createdAt: number
   updatedAt: number
@@ -59,6 +65,7 @@ export interface HookInput {
   name: string
   description?: string
   disabled?: boolean
+  expiresAt?: number
   targets?: HookTarget[]
   /** A secret to use, or `false` for an open hook. Omitted means: generate one. */
   secret?: string | false
@@ -67,6 +74,8 @@ export interface HookInput {
 export interface HookPatch {
   description?: string
   disabled?: boolean
+  /** A moment in epoch ms, or null to take the expiry off again. */
+  expiresAt?: number | null
   /** Replaces the whole list. Use setTarget/removeTarget for one target. */
   targets?: HookTarget[]
 }
@@ -98,7 +107,7 @@ export interface RunResult extends Preview {
 }
 
 /** Why a request was refused, so the caller can pick a status code. */
-export type AuthVerdict = 'ok' | 'unknown' | 'disabled' | 'refused'
+export type AuthVerdict = 'ok' | 'unknown' | 'disabled' | 'expired' | 'refused'
 
 /**
  * The hook registry. Reads are synchronous because the secret check runs inside
@@ -114,6 +123,12 @@ export interface RoutesService {
   removeTarget(name: string, channel: string): Promise<HookDefinition>
   rotate(name: string): Promise<{ hook: HookDefinition; secret: string }>
   remove(name: string): Promise<boolean>
+  /**
+   * Remove every hook whose moment has passed. Returns the names removed.
+   * Cleaning up is a thing you do: an expiry stops a hook by itself, but
+   * nothing deletes a definition on a timer.
+   */
+  pruneExpired(now?: number): Promise<string[]>
   /** Replace every definition, for `hooks import`. Returns the count written. */
   replaceAll(hooks: HookDefinition[]): Promise<number>
   /** Dry run: the resolved message per target, without sending anything. */
@@ -203,6 +218,43 @@ function tidyMatch(match: Matcher | undefined): Matcher | undefined {
   if (match.minLevel && match.minLevel !== 'debug') out.minLevel = match.minLevel
   if (match.tags?.length) out.tags = match.tags
   return Object.keys(out).length > 0 ? out : undefined
+}
+
+/** Is this hook past its moment? A hook without one never is. */
+export function hasExpired(hook: HookDefinition, now = Date.now()): boolean {
+  return hook.expiresAt !== undefined && hook.expiresAt <= now
+}
+
+/**
+ * When a hook should stop accepting calls, from whatever the caller wrote.
+ * `2h`, `30m`, `7d` and `90s` are counted from now, a number is an epoch in ms,
+ * and anything else is read as a date. `null`, `false` and an empty string mean
+ * no expiry at all, which is how one is taken off again.
+ *
+ * Throws on input it cannot read, so the API can answer 400 instead of quietly
+ * making a hook that dies in 1970.
+ */
+export function parseExpiry(input: unknown, now = Date.now()): number | undefined {
+  if (input === undefined || input === null || input === false || input === '') return undefined
+  if (typeof input === 'number') {
+    if (!Number.isFinite(input) || input <= 0) throw new Error(`'${input}' is not a moment in time`)
+    return Math.trunc(input)
+  }
+  if (typeof input !== 'string') throw new Error('an expiry is a duration like 2h, an epoch in ms, or a date')
+  const text = input.trim()
+  const relative = /^(\d+)\s*([smhdw])$/i.exec(text)
+  if (relative) {
+    const unit = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 }[
+      relative[2]!.toLowerCase() as 's' | 'm' | 'h' | 'd' | 'w'
+    ]
+    return now + Number(relative[1]) * unit
+  }
+  if (/^\d+$/.test(text)) return parseExpiry(Number(text), now)
+  const parsed = Date.parse(text)
+  if (Number.isNaN(parsed)) {
+    throw new Error(`'${text}' is not a duration like 2h or 7d, an epoch in ms, or a date`)
+  }
+  return parsed
 }
 
 /** A fresh secret. Prefixed so it is recognizable in a log or a paste. */

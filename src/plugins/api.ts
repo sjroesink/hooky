@@ -10,6 +10,8 @@ import {
   NoSuchTarget,
   constantTimeEquals,
   type HookDefinition,
+  hasExpired,
+  parseExpiry,
   type HookPatch,
   type HookTarget,
 } from '../core/routes.ts'
@@ -158,6 +160,12 @@ export function apply(ctx: Context, config: Config): void {
       if (hook.disabled) {
         return { status: 409, body: { error: `hook '${found.event.hook}' is switched off` } }
       }
+      if (hasExpired(hook)) {
+        return {
+          status: 409,
+          body: { error: `hook '${found.event.hook}' expired, so this call would be rejected again` },
+        }
+      }
     }
     const replay: HookEvent = {
       ...found.event,
@@ -223,6 +231,19 @@ export function apply(ctx: Context, config: Config): void {
     return { status: 200, body: { hooks: written } }
   })
 
+  /**
+   * Cleanup on purpose. An expiry stops a hook by itself, but no timer deletes a
+   * definition: that would take the row out from under the calls it produced.
+   */
+  route('DELETE', '/hooks', async (request) => {
+    if (request.query.get('expired') !== '1') {
+      throw new BadRequest('add ?expired=1; this only removes hooks whose expiry has passed')
+    }
+    const removed = await routesOrThrow().pruneExpired()
+    if (removed.length > 0) logger.info(`removed ${removed.length} expired hook(s): ${removed.join(', ')}`)
+    return { status: 200, body: { removed } }
+  })
+
   route('GET', '/hooks/:name', async (request) => {
     const channels = new Set(ctx.notify.names)
     return { status: 200, body: hookView(demand(request.params['name']!), { channels }) }
@@ -234,6 +255,7 @@ export function apply(ctx: Context, config: Config): void {
       name: typeof input['name'] === 'string' ? input['name'] : '',
       description: typeof input['description'] === 'string' ? input['description'] : undefined,
       disabled: input['disabled'] === true,
+      expiresAt: expiryFrom(input),
       targets: targetsFrom(input['targets']),
       secret:
         input['secret'] === false
@@ -259,6 +281,8 @@ export function apply(ctx: Context, config: Config): void {
       patch.description = typeof input['description'] === 'string' ? input['description'] : undefined
     }
     if ('disabled' in input) patch.disabled = input['disabled'] === true
+    // Either key sets it, and either key with an empty value takes it off.
+    if ('expiresIn' in input || 'expiresAt' in input) patch.expiresAt = expiryFrom(input) ?? null
     if ('targets' in input) patch.targets = targetsFrom(input['targets']) ?? []
     const hook = await routesOrThrow().update(request.params['name']!, patch)
     logger.info(`updated hook '${hook.name}'`)
@@ -456,6 +480,7 @@ function hookView(hook: HookDefinition, options: { hash?: boolean; channels?: Se
     description: hook.description ?? null,
     disabled: hook.disabled,
     hasSecret: hook.secretHash !== null,
+    expiresAt: hook.expiresAt ?? null,
     ...(options.hash ? { secretHash: hook.secretHash } : {}),
     targets: hook.targets.map((target) =>
       options.channels ? { ...target, missing: !options.channels.has(target.channel) } : target,
@@ -469,6 +494,19 @@ function hookView(hook: HookDefinition, options: { hash?: boolean; channels?: Se
 function targetFrom(input: unknown): HookTarget {
   try {
     return HookTargetSchema(input as Partial<HookTarget> & { channel: string })
+  } catch (error) {
+    throw new BadRequest(describe(error))
+  }
+}
+
+/**
+ * The expiry a request asks for. `expiresIn` is a duration from now, so a caller
+ * that wants a hook for the next two hours does not have to do the arithmetic;
+ * `expiresAt` is the moment itself.
+ */
+function expiryFrom(input: Record<string, unknown>): number | undefined {
+  try {
+    return parseExpiry('expiresIn' in input ? input['expiresIn'] : input['expiresAt'])
   } catch (error) {
     throw new BadRequest(describe(error))
   }
@@ -493,6 +531,7 @@ function definitionFrom(input: unknown): HookDefinition {
     description: typeof row['description'] === 'string' ? row['description'] : undefined,
     disabled: row['disabled'] === true,
     secretHash: typeof row['secretHash'] === 'string' ? row['secretHash'] : null,
+    expiresAt: typeof row['expiresAt'] === 'number' ? row['expiresAt'] : undefined,
     targets: targetsFrom(row['targets']) ?? [],
     createdAt: typeof row['createdAt'] === 'number' ? row['createdAt'] : now,
     updatedAt: typeof row['updatedAt'] === 'number' ? row['updatedAt'] : now,
@@ -608,6 +647,7 @@ function describeApi(base: string) {
           name: 'string',
           description: 'string?',
           disabled: 'boolean?',
+          expiresIn: 'string? duration like 2h or 7d, counted from now',
           targets: 'HookTarget[]?',
           secret: 'string | false, omit to generate one',
         },
@@ -616,7 +656,12 @@ function describeApi(base: string) {
       {
         method: 'PATCH',
         path: `${base}/hooks/:name`,
-        body: { description: 'string?', disabled: 'boolean?', targets: 'HookTarget[]?' },
+        body: {
+          description: 'string?',
+          disabled: 'boolean?',
+          expiresIn: 'string|null? a duration from now, or null to take the expiry off',
+          targets: 'HookTarget[]?',
+        },
         use: 'change a hook; targets replaces the whole list',
       },
       {
@@ -649,6 +694,12 @@ function describeApi(base: string) {
         use: 'send that payload to that one channel for real; nothing is stored or queued',
       },
       { method: 'DELETE', path: `${base}/hooks/:name`, use: 'remove a hook' },
+      {
+        method: 'DELETE',
+        path: `${base}/hooks`,
+        query: ['expired'],
+        use: 'with ?expired=1: remove every hook whose expiry has passed',
+      },
       { method: 'GET', path: `${base}/plugins`, use: 'loader entries with fiber state and config' },
       { method: 'POST', path: `${base}/plugins`, body: { name: 'string', config: 'object?', disabled: 'boolean?' }, use: 'mount a plugin and write it to cordis.yml' },
       { method: 'PATCH', path: `${base}/plugins/:id`, body: { config: 'object?', disabled: 'boolean?' }, use: 'reconfigure or disable an entry; config merges per key' },

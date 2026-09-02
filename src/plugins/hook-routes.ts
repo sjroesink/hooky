@@ -6,6 +6,7 @@ import {
   HookExists,
   NoSuchHook,
   NoSuchTarget,
+  hasExpired,
   hashSecret,
   newSecret,
   secretMatches,
@@ -115,6 +116,7 @@ class Routes extends Service implements RoutesService {
       name: input.name,
       description: input.description,
       disabled: input.disabled ?? false,
+      expiresAt: input.expiresAt,
       secretHash: secret === undefined ? null : hashSecret(secret),
       targets: input.targets ?? [],
       createdAt: now,
@@ -129,6 +131,7 @@ class Routes extends Service implements RoutesService {
       ...hook,
       description: 'description' in patch ? patch.description : hook.description,
       disabled: 'disabled' in patch ? patch.disabled ?? false : hook.disabled,
+      expiresAt: 'expiresAt' in patch ? patch.expiresAt ?? undefined : hook.expiresAt,
       targets: 'targets' in patch ? patch.targets ?? [] : hook.targets,
       updatedAt: Date.now(),
     })
@@ -163,6 +166,14 @@ class Routes extends Service implements RoutesService {
     const removed = await this.ctx.store.removeHook(name)
     this.cache.delete(name)
     return removed
+  }
+
+  async pruneExpired(now = Date.now()): Promise<string[]> {
+    const gone = this.list()
+      .filter((hook) => hasExpired(hook, now))
+      .map((hook) => hook.name)
+    for (const name of gone) await this.remove(name)
+    return gone
   }
 
   /** For `hooks import`: the definitions replace what is there, hashes included. */
@@ -238,7 +249,7 @@ class Routes extends Service implements RoutesService {
     // Only reachable for events that did not come through the HTTP ingest, such
     // as /api/send or a replay of a hook that has since been removed.
     if (!hook) return this.settings.fallback === 'none' ? [] : undefined
-    if (hook.disabled) return []
+    if (hook.disabled || hasExpired(hook)) return []
     return this.allTargets(hook).filter((target) => matches(target.match, message))
   }
 
@@ -246,6 +257,9 @@ class Routes extends Service implements RoutesService {
     const hook = this.cache.get(name)
     if (!hook) return 'unknown'
     if (hook.disabled) return 'disabled'
+    // Before the secret check, like `disabled`: what the caller sent does not
+    // matter any more once the hook is past its moment.
+    if (hasExpired(hook)) return 'expired'
     return secretMatches(provided, hook.secretHash) ? 'ok' : 'refused'
   }
 
@@ -323,6 +337,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       const verdict = routes.authorize(raw.hook, secretFrom(raw, header))
       if (verdict === 'unknown') return turnAway(raw, 404, `no hook named '${raw.hook}'`)
       if (verdict === 'disabled') return turnAway(raw, 410, `hook '${raw.hook}' is disabled`)
+      if (verdict === 'expired') {
+        const at = routes.get(raw.hook)?.expiresAt ?? 0
+        return turnAway(raw, 410, `hook '${raw.hook}' expired on ${new Date(at).toISOString()}`)
+      }
       if (verdict === 'refused') {
         logger.warn(`hook ${raw.hook}: missing or wrong secret`)
         return null

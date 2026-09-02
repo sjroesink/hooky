@@ -340,7 +340,34 @@ went out plus what the channel said.
 **The secret belongs to the hook.** A create generates one, hands it back once and stores only its
 SHA-256, so the API cannot leak it afterwards and neither can a database dump. Lost means
 `hooks rotate`, not lookup. `--open` defines a hook without a secret, and `--secret` supplies your own.
-A call with the wrong secret gets 401, an undefined name gets 404, a disabled hook gets 410.
+A call with the wrong secret gets 401, an undefined name gets 404, and a hook that is switched off or
+past its expiry gets 410.
+
+**A hook can carry an expiry.** `--expires-in 2h` gives it a moment after which it stops accepting
+calls: 410 with the date in the reason, and the call kept like any other rejected one. That is what a
+hook something made on the fly needs, a callback an agent wants for the next twenty minutes, so it does
+not leave a live endpoint behind when it is done with it.
+
+```sh
+node src/cli.ts hooks add tmp-callback --target sse --expires-in 20m
+node src/cli.ts hooks set tmp-callback --expires-in 2h    # move the moment
+node src/cli.ts hooks set tmp-callback --no-expiry        # and take it off again
+node src/cli.ts hooks prune                               # remove what expired
+```
+
+Nothing deletes a definition on a timer. An expired hook stays where it is, marked `expired` in the
+Hooks view, because taking the row out would make the calls it produced read as calls nobody ever
+defined a hook for, complete with an offer to define one. So expiring is automatic and cleaning up is
+a thing you do. `hooks prune` is that one action, and the events stay in the history either way.
+
+Over the API, `expiresIn` takes `2h`, `7d`, `30m`, `90s`, an epoch in ms or a date, `expiresAt` takes
+the moment itself, and either of them with `null` takes the expiry off. The Hooks view filters on
+`live`, `temporary` and `expired`, and the detail panel says what the moment means for that one hook.
+
+An expiry is not the same switch as `disabled`: one is the clock and the other is you. Both answer 410,
+a hook can be in both states at once, and the reason says which it was. A question that was already
+asked stays answerable after its hook expires, because a reply url belongs to the ask and not to the
+hook it rode out on.
 
 **The mapping is `{{path}}` and nothing else.** No expressions, so a template is safe to store and to
 edit over the API. Available: `title`, `body` (alias `message`), `hook`, `level`, `url`, `id`, `tags`,
@@ -361,7 +388,7 @@ POST /hooks/random  ->  404, because nobody defined that name
 
 **A call nobody took is kept.** The 404 above is still a 404 for the caller, but the call itself lands
 in the history with `state: rejected` and its payload intact, and so does a call for a hook that is
-switched off (410). That is the case where you want to see what arrived: some service is already
+switched off or past its expiry (410). That is the case where you want to see what arrived: some service is already
 posting, you just have not defined the hook yet. `GET /api/events?state=rejected` lists them, the
 Calls view marks them, and from a rejected call the UI offers to define a hook by that name with that
 payload as the starting point. Replaying one answers `409` until the hook exists, because queueing an

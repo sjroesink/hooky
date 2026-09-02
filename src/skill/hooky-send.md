@@ -60,7 +60,7 @@ The call waits for the queue to work the event off, so the answer says what happ
 | `400` | The body is not a JSON object. | Fix the body. |
 | `401` | Wrong or missing secret. | Ask for the right one. Do not guess, and do not try another hook's secret. |
 | `404` | No hook by that name. | Do not invent one. Ask which hook to use, or define it with `hooky-manage`. |
-| `410` | The hook exists but is switched off. | Somebody switched it off on purpose. Ask before turning it on. |
+| `410` | The hook exists but is switched off, or its expiry has passed. | The reason says which. Somebody switched it off on purpose, or the hook was temporary and its moment is gone. Ask before reviving either. |
 | `413` | The body is too large. | Send less. |
 
 A question adds one more: `400` when the `ask.id` you brought is malformed or already used.

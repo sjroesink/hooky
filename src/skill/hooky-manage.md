@@ -40,6 +40,26 @@ anyone who knows the name can post to; `"secret": "hk_…"` supplies one you alr
 
 A hook name has to survive being a path segment: letters, digits, dot, dash, underscore.
 
+## A hook that expires by itself
+
+For a hook that is only needed for a while, a callback for one task rather than a permanent endpoint:
+
+```sh
+curl -X POST -H 'authorization: Bearer <token>' -H 'content-type: application/json'   __BASE____API__/hooks   -d '{"name":"tmp-callback","targets":[{"channel":"sse"}],"expiresIn":"20m"}'
+```
+
+`expiresIn` takes `2h`, `7d`, `30m`, `90s`, an epoch in ms or a date. After that moment a call answers
+410 with the date in the reason, and the call is kept as a rejected one so it is visible that somebody
+is still knocking. `PATCH {"expiresIn":"2h"}` moves the moment, `PATCH {"expiresIn":null}` takes the
+expiry off, and `expiresAt` is the same field with the moment instead of a duration.
+
+Expiring is automatic; removing is not. The definition stays after its moment, marked `expired`, and
+`DELETE __API__/hooks?expired=1` is the one call that clears out everything that has passed. Do that
+when you are done with a hook you made, not on a schedule and not to tidy up somebody else's.
+
+Give any hook you define for yourself an expiry. It is the difference between borrowing an endpoint and
+leaving one open.
+
 ## Say what a channel receives
 
 ```sh
@@ -163,10 +183,11 @@ not an event: it is never stored and never queued.
 |---|---|
 | `GET __API__/hooks` | Every definition, with `missing: true` on a target whose channel is gone |
 | `GET __API__/hooks/:name` | One definition |
-| `PATCH __API__/hooks/:name` | Change `description`, `disabled`, or the whole `targets` list |
+| `PATCH __API__/hooks/:name` | Change `description`, `disabled`, `expiresIn`, or the whole `targets` list |
 | `DELETE __API__/hooks/:name/targets/:channel` | Remove one target |
 | `POST __API__/hooks/:name/rotate` | New secret, shown once. The old one stops working immediately |
 | `DELETE __API__/hooks/:name` | Remove the hook. Calls to that name answer 404 after this |
+| `DELETE __API__/hooks?expired=1` | Remove every hook whose expiry has passed. Their events stay |
 | `GET __API__/channels` | The channels that exist, the settings each takes per target, and what they delivered |
 | `GET __API__/hooks?include=hash` | Every definition with its hash, which is the backup format |
 | `PUT __API__/hooks` | Replace every definition with `{"hooks": [...]}` from such a backup |
@@ -179,7 +200,8 @@ the instance disagree, because the catalogue comes from the code.
 1. Do not define a hook nobody asked for. A hook decides what gets told to whom, and on a channel that
    reaches a phone that is somebody's night. Ask.
 2. Switching a hook off is `PATCH {"disabled": true}` and keeps its history. Removing it is final and
-   makes every call answer 404.
+   makes every call answer 404. An expiry is the third of these: the hook keeps its history and stops
+   taking calls without anyone having to remember to do it.
 3. Rotating breaks every caller that still holds the old secret. Have somewhere to put the new one
    before you rotate.
 4. Keep `critical` for what should interrupt somebody. It is one level for every channel of the hook,

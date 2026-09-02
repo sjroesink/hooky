@@ -92,7 +92,8 @@ CREATE TABLE IF NOT EXISTS hooks (
   secret_hash TEXT,
   targets     TEXT NOT NULL,
   created_at  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL
+  updated_at  INTEGER NOT NULL,
+  expires_at  INTEGER
 );
 `
 
@@ -124,6 +125,8 @@ interface HookRow {
   targets: string
   created_at: number
   updated_at: number
+  /** The moment this hook stops accepting calls; NULL means never. */
+  expires_at: number | null
 }
 
 interface AskRow {
@@ -205,6 +208,11 @@ class SqliteStore extends Service implements StoreService {
     const asks = this.columnsOf('asks')
     if (asks.size > 0 && !asks.has('base_url')) {
       this.db.exec("ALTER TABLE asks ADD COLUMN base_url TEXT NOT NULL DEFAULT ''")
+    }
+
+    const hooks = this.columnsOf('hooks')
+    if (hooks.size > 0 && !hooks.has('expires_at')) {
+      this.db.exec('ALTER TABLE hooks ADD COLUMN expires_at INTEGER')
     }
   }
 
@@ -403,6 +411,7 @@ class SqliteStore extends Service implements StoreService {
       description: row.description ?? undefined,
       disabled: row.disabled === 1,
       secretHash: row.secret_hash,
+      expiresAt: row.expires_at ?? undefined,
       targets: JSON.parse(row.targets) as HookTarget[],
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -412,12 +421,12 @@ class SqliteStore extends Service implements StoreService {
   async saveHook(hook: HookDefinition): Promise<void> {
     this.db
       .prepare(
-        `INSERT INTO hooks (name, description, disabled, secret_hash, targets, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO hooks (name, description, disabled, secret_hash, targets, created_at, updated_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(name) DO UPDATE SET
            description = excluded.description, disabled = excluded.disabled,
            secret_hash = excluded.secret_hash, targets = excluded.targets,
-           updated_at = excluded.updated_at`,
+           updated_at = excluded.updated_at, expires_at = excluded.expires_at`,
       )
       .run(
         hook.name,
@@ -427,6 +436,7 @@ class SqliteStore extends Service implements StoreService {
         JSON.stringify(hook.targets),
         hook.createdAt,
         hook.updatedAt,
+        hook.expiresAt ?? null,
       )
   }
 

@@ -90,8 +90,9 @@ It does not ask a second question.
 
 Work down this list, in this order:
 
-1. `state: rejected`. No hook has that name, or the hook is switched off. The call was answered 404 or
-   410 and kept anyway, payload included. `rejection.reason` says which.
+1. `state: rejected`. No hook has that name, or the hook is switched off, or its expiry has passed.
+   The call was answered 404 or 410 and kept anyway, payload included. `rejection.reason` says which,
+   and for an expired hook it carries the date it stopped taking calls.
 2. A `skipped` delivery with "no channel named X is registered". The target names a channel that is not
    mounted right now, so the message had nowhere to go. That is a composition problem.
 3. A `skipped` delivery with a matcher reason. The target's own filter did not accept this event, for
@@ -122,8 +123,9 @@ A replay is a new event with the same payload, carrying `replayOf` to the origin
 the hook as it stands now. So a mapping you fixed applies, and a channel that already took it gets it
 again: a replay is a second notification, not a repair of the first.
 
-A rejected call answers `409` on a replay until a hook by that name exists and is on. Define the hook
-first, then replay.
+A rejected call answers `409` on a replay until a hook by that name exists, is on, and has not
+expired. Fix that first, then replay. For a hook that expired, ask before extending it: it was
+temporary on purpose, and a replay into it is a notification somebody may no longer expect.
 
 ## The other skills
 

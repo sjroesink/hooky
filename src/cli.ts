@@ -197,12 +197,14 @@ const commands: Record<string, Command> = {
       '--secret': 'use this secret instead of a generated one',
       '--open': 'no secret at all; anyone who knows the name can post',
       '--disabled': 'define it without accepting calls yet',
+      '--expires-in': 'stop accepting calls after this long, e.g. 2h or 7d',
     },
     async run(argv, flags) {
       return call('POST', '/hooks', {
         name: need(argv[0], 'name'),
         description: typeof flags['description'] === 'string' ? flags['description'] : undefined,
         disabled: flags['disabled'] === true,
+        expiresIn: typeof flags['expires-in'] === 'string' ? flags['expires-in'] : undefined,
         targets: many(flags['target']).map((channel) => ({ channel })),
         secret:
           flags['open'] === true
@@ -214,14 +216,27 @@ const commands: Record<string, Command> = {
     },
   },
   'hooks set': {
-    use: 'change the description, or turn a hook off without removing it',
+    use: 'change the description, the expiry, or turn a hook off without removing it',
     args: '<name>',
-    flags: { '--description': 'new description', '--disabled': 'true or false' },
+    flags: {
+      '--description': 'new description',
+      '--disabled': 'true or false',
+      '--expires-in': 'expire this long from now, e.g. 2h, 7d, or a date',
+      '--no-expiry': 'let it accept calls again for as long as it exists',
+    },
     async run(argv, flags) {
       const body: Record<string, unknown> = {}
       if (typeof flags['description'] === 'string') body['description'] = flags['description']
       if (flags['disabled'] !== undefined) body['disabled'] = flags['disabled'] !== 'false'
+      if (typeof flags['expires-in'] === 'string') body['expiresIn'] = flags['expires-in']
+      if (flags['no-expiry'] === true) body['expiresIn'] = null
       return call('PATCH', `/hooks/${need(argv[0], 'name')}`, body)
+    },
+  },
+  'hooks prune': {
+    use: 'remove every hook whose expiry has passed; their events stay in the history',
+    async run() {
+      return call('DELETE', '/hooks?expired=1')
     },
   },
   'hooks target': {

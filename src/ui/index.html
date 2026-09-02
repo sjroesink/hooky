@@ -477,6 +477,9 @@
     .filters input[type="search"] { width: auto; flex: 1; min-width: 120px; }
     .filters .segmented, .filters .check, .filters .spacer { display: none; }
     .filters[data-open="true"] .segmented, .filters[data-open="true"] .check { display: flex; }
+    /* The hooks bar has no filter toggle to open, and this is the only control
+       on it, so it stays. The bar wraps to a second line when it has to. */
+    #view-hooks .filters .segmented { display: flex; }
     .head { display: none; }
     .split[data-detail="true"] { grid-template-columns: 1fr; }
     .split[data-detail="true"] .listwrap { display: none; }
@@ -583,6 +586,11 @@
   <section id="view-hooks" class="hooks" hidden>
     <div class="filters">
       <input type="search" id="h-search" placeholder="search hooks, targets…" autocomplete="off">
+      <div class="segmented" id="h-state">
+        <button type="button" data-hstate="live" aria-pressed="false">live</button>
+        <button type="button" data-hstate="temporary" aria-pressed="false">temporary</button>
+        <button type="button" data-hstate="expired" aria-pressed="false">expired</button>
+      </div>
       <button type="button" class="mini spacer" id="h-clear" hidden>
         <svg class="i" aria-hidden="true"><use href="#i-x"/></svg>clear
       </button>
@@ -654,6 +662,7 @@ const state = {
   chSettings: {},     // per channel, the settings a target may carry
   hookSel: null,      // selected hook name, or NEW for the create form
   hookFilter: '',
+  hookState: '',      // '' | live | temporary | expired: what the STATE cell says
   revealed: null,     // { name, secret }: shown once, after a create or a rotate
   openTarget: null,   // channel whose editor is open
   payload: null,      // the body in the payload box: what a target's run sends
@@ -693,6 +702,28 @@ function relative(target) {
   const minutes = Math.floor(seconds / 60)
   if (minutes < 60) return `in ${minutes}m ${seconds % 60}s`
   return `in ${Math.floor(minutes / 60)}h ${minutes % 60}m`
+}
+
+/** Is this hook past its moment? One without an expiry never is. */
+const expired = (hook) => hook.expiresAt !== null && hook.expiresAt !== undefined && hook.expiresAt <= Date.now()
+const temporary = (hook) => hook.expiresAt !== null && hook.expiresAt !== undefined
+
+/** How long a hook still has, short enough for a list cell. */
+function timeLeft(at) {
+  const minutes = Math.round((at - Date.now()) / 60000)
+  if (minutes <= 0) return 'expired'
+  if (minutes < 60) return `${minutes}m left`
+  const hours = Math.round(minutes / 60)
+  if (hours < 48) return `${hours}h left`
+  return `${Math.round(hours / 24)}d left`
+}
+
+/** What a call to this hook would get right now, for the STATE cell. */
+function hookState(hook) {
+  if (hook.disabled) return { label: 'off', color: 'var(--fg3)' }
+  if (expired(hook)) return { label: 'expired', color: 'var(--failed)' }
+  if (temporary(hook)) return { label: `on · ${timeLeft(hook.expiresAt)}`, color: 'var(--sent)' }
+  return { label: 'on', color: 'var(--sent)' }
 }
 
 /* ---------------- token and transport ---------------- */
@@ -1288,14 +1319,18 @@ function renderHooks() {
   const term = state.hookFilter.trim().toLowerCase()
   const rows = state.hooks.filter(
     (hook) =>
-      !term ||
-      hook.name.toLowerCase().includes(term) ||
-      (hook.description ?? '').toLowerCase().includes(term) ||
-      hook.targets.some((target) => target.channel.toLowerCase().includes(term)),
+      (!term ||
+        hook.name.toLowerCase().includes(term) ||
+        (hook.description ?? '').toLowerCase().includes(term) ||
+        hook.targets.some((target) => target.channel.toLowerCase().includes(term))) &&
+      inState(hook),
   )
 
   if ($('h-search') !== document.activeElement) $('h-search').value = state.hookFilter
-  $('h-clear').hidden = state.hookFilter === ''
+  document.querySelectorAll('#h-state button').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.hstate === state.hookState))
+  })
+  $('h-clear').hidden = state.hookFilter === '' && state.hookState === ''
 
   $('hook-rows').innerHTML =
     state.hooks.length === 0 ? emptyHooks() : rows.length === 0 ? emptyHookFilter() : rows.map(hookRow).join('')
@@ -1318,12 +1353,25 @@ function emptyHooks() {
     </div>`
 }
 
+/** Live is what accepts a call, temporary is what will stop on its own. */
+function inState(hook) {
+  if (state.hookState === '') return true
+  if (state.hookState === 'live') return !hook.disabled && !expired(hook)
+  if (state.hookState === 'temporary') return temporary(hook) && !expired(hook)
+  return expired(hook)
+}
+
 function emptyHookFilter() {
+  const why = []
+  if (state.hookFilter.trim()) why.push(`matching "${esc(state.hookFilter)}"`)
+  if (state.hookState === 'live') why.push('accepting calls')
+  if (state.hookState === 'temporary') why.push('with an expiry still to come')
+  if (state.hookState === 'expired') why.push('past their expiry')
   return `
     <div class="empty">
       <h2>No hook matches</h2>
-      <p>${state.hooks.length} defined, 0 matching "${esc(state.hookFilter)}".</p>
-      <div class="suggestions"><button type="button" id="h-clear-2">clear the search</button></div>
+      <p>${state.hooks.length} defined, 0 ${why.join(' and ')}.</p>
+      <div class="suggestions"><button type="button" id="h-clear-2">clear the filter</button></div>
     </div>`
 }
 
@@ -1347,7 +1395,7 @@ function hookRow(hook) {
         <span class="cell-hook">${esc(hook.name)}</span>
         <span class="chips">${targets}</span>
         <span class="cell-time">${hook.hasSecret ? 'own' : 'open'}</span>
-        <span class="cell-time" style="color:${hook.disabled ? 'var(--fg3)' : 'var(--sent)'}">${hook.disabled ? 'off' : 'on'}</span>
+        <span class="cell-time" style="color:${hookState(hook).color}">${esc(hookState(hook).label)}</span>
         <span class="cell-time right">${fmt(hook.updatedAt)}</span>
       </span>
     </button>`
@@ -1400,7 +1448,7 @@ function renderHookDetail() {
   const rows = [...hook.targets, ...idle]
   panel.innerHTML = `
     <div class="detail-head">
-      <span class="id">${esc(hook.name)}${hook.disabled ? ' · off' : ''}</span>
+      <span class="id">${esc(hook.name)}${hook.disabled ? ' · off' : ''}${expired(hook) ? ' · expired' : ''}</span>
       <span class="actions">
         <button type="button" class="switch" data-on="${!hook.disabled}" id="h-toggle">
           <span class="track"><span class="knob"></span></span>${hook.disabled ? 'off' : 'on'}
@@ -1428,6 +1476,18 @@ function renderHookDetail() {
         <div class="caption">DESCRIPTION</div>
         <input id="h-description" value="${esc(hook.description ?? '')}"
                placeholder="what this hook is for" style="width:100%;height:32px;font:var(--f3)/1 var(--mono)">
+      </div>
+
+      <div>
+        <div class="caption">
+          EXPIRY
+          ${temporary(hook) ? `<button type="button" class="mini" id="h-expiry-clear">${icon('x')}clear</button>` : ''}
+        </div>
+        <input id="h-expiry" value="" placeholder="2h, 7d, or a date"
+               style="width:100%;height:32px;font:var(--f3)/1 var(--mono)">
+        <div class="hint" style="font:var(--f2)/1.6 var(--mono);color:var(--fg3);margin-top:6px">
+          ${expiryHint(hook)}
+        </div>
       </div>
 
       <div>
@@ -1485,6 +1545,20 @@ function renderHookDetail() {
         }
       </div>
     </div>`
+}
+
+/** What the expiry means for this hook, in the three states it can be in. */
+function expiryHint(hook) {
+  if (expired(hook)) {
+    return `Expired ${fmt(hook.expiresAt)}. Calls answer 410 and are kept as rejected calls. Set a new
+            expiry above, or remove the hook; the events it produced stay in the history.`
+  }
+  if (temporary(hook)) {
+    return `Stops accepting calls ${fmt(hook.expiresAt)}, ${esc(timeLeft(hook.expiresAt))}. A call after that
+            answers 410. Typing a new duration here moves the moment; nothing deletes the hook on its own.`
+  }
+  return `No expiry: this hook accepts calls until you switch it off. A duration here makes it
+          temporary, so it goes quiet by itself.`
 }
 
 function reveal(secret) {
@@ -1669,6 +1743,14 @@ function newHookForm() {
         <div class="line">
           <label for="n-description">description</label>
           <input id="n-description" placeholder="what this hook is for" autocomplete="off">
+        </div>
+        <div class="line">
+          <label for="n-expiry">expires in</label>
+          <input id="n-expiry" placeholder="2h, 7d; empty means never" autocomplete="off">
+          <span class="hint" style="font:var(--f2)/1.5 var(--mono);color:var(--fg3)">
+            A temporary hook stops accepting calls when this runs out and answers 410 from then on. The
+            definition stays until you remove it, so what it delivered is still readable.
+          </span>
         </div>
         <div class="line">
           <label>targets</label>
@@ -1932,8 +2014,16 @@ $('h-search').addEventListener(
   }, 200),
 )
 
+$('h-state').addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-hstate]')
+  if (!button) return
+  state.hookState = state.hookState === button.dataset.hstate ? '' : button.dataset.hstate
+  renderHooks()
+})
+
 $('h-clear').addEventListener('click', () => {
   state.hookFilter = ''
+  state.hookState = ''
   renderHooks()
 })
 
@@ -1952,6 +2042,7 @@ $('hook-rows').addEventListener('click', (event) => {
   if (event.target.closest('button[data-new]')) return selectHook(NEW)
   if (event.target.closest('#h-clear-2')) {
     state.hookFilter = ''
+    state.hookState = ''
     return renderHooks()
   }
   const row = event.target.closest('button[data-hook]')
@@ -2003,6 +2094,9 @@ $('hook-detail').addEventListener('click', async (event) => {
 
   if (event.target.closest('#h-toggle')) {
     return void hookPatch(hook.name, { disabled: !hook.disabled }, hook.disabled ? 'on' : 'off')
+  }
+  if (event.target.closest('#h-expiry-clear')) {
+    return void hookPatch(hook.name, { expiresIn: null }, 'expiry removed')
   }
   if (event.target.closest('#h-rotate')) {
     // A rotate cannot be undone: the old secret is gone the moment it lands.
@@ -2084,14 +2178,22 @@ $('hook-detail').addEventListener('click', async (event) => {
   if (go) return void runTarget(hook, go.dataset.run, go)
 })
 
-/** A description is saved when the field loses focus or takes Enter. */
+/** A description or an expiry is saved when the field loses focus or takes Enter. */
 $('hook-detail').addEventListener('change', (event) => {
-  if (event.target.id !== 'h-description') return
   const hook = state.hooks.find((row) => row.name === state.hookSel)
   if (!hook) return
-  const value = event.target.value.trim()
-  if (value === (hook.description ?? '')) return
-  void hookPatch(hook.name, { description: value }, 'description saved')
+  if (event.target.id === 'h-description') {
+    const value = event.target.value.trim()
+    if (value === (hook.description ?? '')) return
+    return void hookPatch(hook.name, { description: value }, 'description saved')
+  }
+  if (event.target.id === 'h-expiry') {
+    // The field is for the new moment, not for the one that is set: it shows a
+    // duration from now, and what it currently expires at is in the line below.
+    const value = event.target.value.trim()
+    if (value === '') return
+    void hookPatch(hook.name, { expiresIn: value }, 'expiry set')
+  }
 })
 
 $('hook-detail').addEventListener('keydown', (event) => {
@@ -2117,7 +2219,7 @@ $('hook-detail').addEventListener('keydown', (event) => {
     // The caret is about to move on its own; what is open no longer matches it.
     if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) acClose()
   }
-  if (event.key === 'Enter' && event.target.id === 'h-description') event.target.blur()
+  if (event.key === 'Enter' && ['h-description', 'h-expiry'].includes(event.target.id)) event.target.blur()
   if (event.key === 'Enter' && event.target.id === 'n-name') void createHook()
 })
 
@@ -2157,6 +2259,7 @@ async function createHook() {
   const body = {
     name,
     description: $('n-description').value.trim() || undefined,
+    expiresIn: $('n-expiry').value.trim() || undefined,
     targets,
     ...($('n-open').checked ? { secret: false } : {}),
   }
