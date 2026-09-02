@@ -1,4 +1,8 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { test, type TestContext } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import timer from '@deepseek-ai/cordis-plugin-timer'
@@ -505,4 +509,46 @@ test('a call without an ask is untouched', async (t) => {
   assert.equal(answer.body.ask, undefined)
   assert.equal(seen[0]!.body, 'nothing to answer')
   assert.equal(seen[0]!.actions, undefined)
+})
+
+test('a database that saw an older asks table is brought up to date', async (t) => {
+  // What a live instance ends up with when the table was created by an earlier
+  // shape of this schema: `CREATE TABLE IF NOT EXISTS` leaves it alone, so the
+  // column that came later has to be added by hand.
+  const dir = mkdtempSync(join(tmpdir(), 'hooky-asks-'))
+  const file = join(dir, 'old.db')
+
+  const seed = new DatabaseSync(file)
+  seed.exec(
+    `CREATE TABLE asks (
+       id TEXT PRIMARY KEY, event_id TEXT NOT NULL, hook TEXT NOT NULL, question TEXT NOT NULL,
+       actions TEXT NOT NULL, answer TEXT, answer_title TEXT, answer_data TEXT,
+       answered_at INTEGER, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL)`,
+  )
+  seed.close()
+
+  const ctx = new Context()
+  // Dispose first, remove second: on Windows the file cannot go while the
+  // database handle is still open.
+  t.after(() => ctx.fiber.dispose())
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  await ctx.plugin(storePlugin, { path: file, retentionDays: 0 })
+
+  const now = Date.now()
+  await ctx.store.saveAsk({
+    id: 'kept-across-the-migration',
+    eventId: 'event-1',
+    hook: 'deploy',
+    question: 'Deploy?',
+    baseUrl: 'https://h.test',
+    actions: [{ value: 'yes', title: 'yes', url: 'https://h.test/ask/reply/x/yes', reply: true }],
+    answered: null,
+    createdAt: now,
+    expiresAt: now + 60_000,
+  })
+
+  const back = await ctx.store.getAsk('kept-across-the-migration')
+  assert.equal(back?.baseUrl, 'https://h.test')
+  const answered = await ctx.store.answerAsk('kept-across-the-migration', { action: 'yes', at: now })
+  assert.equal(answered.verdict, 'answered')
 })

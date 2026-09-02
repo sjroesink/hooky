@@ -196,13 +196,21 @@ class SqliteStore extends Service implements StoreService {
    * added later has to be added by hand. Cheap enough to run on every boot.
    */
   private migrate(): void {
-    const columns = new Set(
-      (this.db.prepare('PRAGMA table_info(events)').all() as unknown as { name: string }[]).map(
-        (column) => column.name,
-      ),
-    )
-    if (!columns.has('reject_status')) this.db.exec('ALTER TABLE events ADD COLUMN reject_status INTEGER')
-    if (!columns.has('reject_reason')) this.db.exec('ALTER TABLE events ADD COLUMN reject_reason TEXT')
+    const events = this.columnsOf('events')
+    if (!events.has('reject_status')) this.db.exec('ALTER TABLE events ADD COLUMN reject_status INTEGER')
+    if (!events.has('reject_reason')) this.db.exec('ALTER TABLE events ADD COLUMN reject_reason TEXT')
+
+    // A database that saw an earlier shape of this table has to be brought up,
+    // and an empty set means the CREATE above just made it.
+    const asks = this.columnsOf('asks')
+    if (asks.size > 0 && !asks.has('base_url')) {
+      this.db.exec("ALTER TABLE asks ADD COLUMN base_url TEXT NOT NULL DEFAULT ''")
+    }
+  }
+
+  private columnsOf(table: string): Set<string> {
+    const rows = this.db.prepare(`PRAGMA table_info(${table})`).all() as unknown as { name: string }[]
+    return new Set(rows.map((column) => column.name))
   }
 
   /** Closing the handle is an effect, so a reload does not leak the file lock. */
