@@ -48,6 +48,19 @@ export interface HookEvent {
   replayOf?: string
 }
 
+/**
+ * One way to answer a question, as a channel receives it. A channel that renders
+ * these itself says so; every other channel gets them as lines under the body.
+ */
+export interface MessageAction {
+  /** Stable name of this answer. It is in the reply url and in the answer. */
+  value: string
+  title: string
+  url: string
+  /** False for a link the caller supplied itself, which answers nothing. */
+  reply: boolean
+}
+
 /** What goes out, after the `notify/render` waterfall. */
 export interface Message {
   title: string
@@ -55,6 +68,8 @@ export interface Message {
   level: Level
   url?: string
   tags: string[]
+  /** Answers to a question. Set by the ask plugin, absent on a plain message. */
+  actions?: MessageAction[]
   event: HookEvent
 }
 
@@ -95,6 +110,13 @@ export interface Channel {
   match?: Matcher
   /** Settings this channel reads off a target, over its own config. */
   settings?: ChannelSetting[]
+  /**
+   * This channel renders `message.actions` itself, so the body stays what the
+   * caller wrote. Declare it only when every action is shown: a channel with a
+   * limit of its own is responsible for what it cannot fit, and `appendActions`
+   * from `core/ask.ts` is there for the rest.
+   */
+  actions?: boolean
   /**
    * Rejects on failure. `signal` aborts when the owning fiber unloads.
    * `settings` is what the target carries, already validated as strings.

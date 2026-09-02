@@ -1,3 +1,4 @@
+import type { AnswerVerdict, AskAnswer, StoredAsk } from './ask.ts'
 import type { HookDefinition } from './routes.ts'
 import type { DeliveryResult, HookEvent, Level, Outcome, PassRecord } from './types.ts'
 
@@ -75,6 +76,21 @@ export interface StoreService {
   /** Drop settled events received before `before`. Returns rows removed. */
   prune(before: number): Promise<number>
   stats(): Promise<StoreStats>
+
+  /**
+   * Open questions. An ask outlives the request it rode out on, so a link still
+   * works after a restart, and the answer is readable next to the event.
+   */
+  saveAsk(ask: StoredAsk): Promise<void>
+  getAsk(id: string): Promise<StoredAsk | undefined>
+  askForEvent(eventId: string): Promise<StoredAsk | undefined>
+  /**
+   * Answer one, if it is still open. First answer wins, and that is decided in
+   * one statement rather than in a read followed by a write.
+   */
+  answerAsk(id: string, answer: AskAnswer): Promise<{ verdict: AnswerVerdict; ask?: StoredAsk }>
+  /** Drop asks that expired before `before`. Returns rows removed. */
+  pruneAsks(before: number): Promise<number>
 
   /** Hook definitions. Read once at mount; the routes service caches them. */
   listHooks(): Promise<HookDefinition[]>

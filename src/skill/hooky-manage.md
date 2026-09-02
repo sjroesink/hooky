@@ -98,6 +98,13 @@ two plugins. Leave the setting out and the channel falls back to its own row, wh
 then the delivery is **skipped**, with `no topic: set one on this target, or a default on the ntfy row`
 as the reason. That is the fix, not a bug to report, and a skip is never retried.
 
+## A hook that asks something back
+
+Nothing to define. A hook is a hook, and a caller turns one call into a question by sending an `ask`
+in the payload; `hooky-send` is the document for that side. What matters here is that the answers go
+out over the channels this hook already has, so a hook that asks should reach a person and not a log.
+A question on a hook whose only target writes to disk is a question nobody will ever answer.
+
 ## Templates
 
 `{{path}}` resolves against the event. A path that resolves to nothing becomes an empty string, an
@@ -167,6 +174,9 @@ the instance disagree, because the catalogue comes from the code.
 6. A setting marked as a credential, like a Teams webhook url, is readable through this API and lands
    in a backup from `GET __API__/hooks?include=hash`. Do not paste one into a ticket, a commit or a
    screenshot, and treat that backup the way you treat an environment file.
+7. A reply link to an open question is a capability: whoever holds it answers the question, with no
+   secret of their own. They sit in the database until they expire, so a copy of the file is a copy of
+   every open question. Nothing to configure, only something to know before you pass one on.
 
 ## The other skills
 

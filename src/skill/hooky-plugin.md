@@ -67,7 +67,7 @@ And the services, each provided by a plugin and reachable as `ctx.<name>`:
 | `ctx.server` | `route(method, pattern, handler)`, returning a disposer |
 | `ctx.hooks` | `submit(event, { waitMs })` to feed one in, `dispatch(event)` to send one now |
 | `ctx.notify` | `register(channel)`, `names`, `settings`, `deliverTo(message, target)` |
-| `ctx.store` | The history and the queue: `append`, `get`, `list`, `due`, `recordAttempt`, `stats` |
+| `ctx.store` | The history and the queue: `append`, `get`, `list`, `due`, `recordAttempt`, `stats`, plus the open questions: `saveAsk`, `getAsk`, `answerAsk` |
 | `ctx.routes` | The hook definitions: `list`, `get`, `create`, `setTarget`, `preview`, `run` |
 | `ctx.logger(name)` | A logger that carries that name in every line |
 
@@ -100,6 +100,12 @@ webhook url is one Teams channel and an ntfy topic is one feed, so `channel-team
 target that sets nothing gets what the row says. With nothing on either, throw `ChannelSkip` from
 `src/core/types.ts`: that answers `skipped` with your message instead of `failed`, so the retry policy
 is not asked and the outbox does not come back for it.
+
+Declare `actions: true` when your channel renders `message.actions` itself, the way a chat with
+buttons does. Then the body stays what the caller wrote; leave it off and `notify` appends one line per
+answer, which is why a channel that has never heard of a question still shows a way to answer it. Only
+declare it if you render every action: a channel with a limit of its own is responsible for what it
+cannot fit, and `appendActions` from `src/core/ask.ts` is there for the rest.
 
 `send` rejects on failure and that is the whole error protocol: the retry policy and the outbox read the
 rejection, not a status code. `signal` aborts when your fiber unloads, so pass it into `fetch` and a
@@ -160,6 +166,11 @@ ctx.on('hook/answer', async (answer, event, next) => {
 ```
 
 Only accepted calls come past there. A refused one answers through `HookRejected` and never reaches it.
+
+`ask.ts` is the one to read before you write anything like it. It holds the answer to a call until a
+person clicks a link, and it needs no new event to do it: `hook/receive` mints the urls, `notify/render`
+puts them on the message, and this seam waits and adds the block. A listener here may await for as long
+as the caller is willing to wait.
 
 ## Something an agent can find
 

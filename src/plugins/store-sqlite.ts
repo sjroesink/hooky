@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path'
 import { DatabaseSync, type StatementSync } from 'node:sqlite'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
+import type { AnswerVerdict, AskAnswer, StoredAsk } from '../core/ask.ts'
 import type {
   EventQuery,
   Rejection,
@@ -11,7 +12,14 @@ import type {
   StoredEvent,
 } from '../core/store.ts'
 import type { HookDefinition, HookTarget } from '../core/routes.ts'
-import type { DeliveryResult, HookEvent, Level, Outcome, PassRecord } from '../core/types.ts'
+import type {
+  DeliveryResult,
+  HookEvent,
+  Level,
+  MessageAction,
+  Outcome,
+  PassRecord,
+} from '../core/types.ts'
 
 export const name = 'store-sqlite'
 
@@ -63,6 +71,20 @@ CREATE TABLE IF NOT EXISTS deliveries (
   at       INTEGER NOT NULL,
   PRIMARY KEY (event_id, channel)
 );
+CREATE TABLE IF NOT EXISTS asks (
+  id           TEXT PRIMARY KEY,
+  event_id     TEXT NOT NULL,
+  hook         TEXT NOT NULL,
+  question     TEXT NOT NULL,
+  base_url     TEXT NOT NULL,
+  actions      TEXT NOT NULL,
+  answer       TEXT,
+  answer_data  TEXT,
+  answered_at  INTEGER,
+  created_at   INTEGER NOT NULL,
+  expires_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS asks_event ON asks(event_id);
 CREATE TABLE IF NOT EXISTS hooks (
   name        TEXT PRIMARY KEY,
   description TEXT,
@@ -102,6 +124,21 @@ interface HookRow {
   targets: string
   created_at: number
   updated_at: number
+}
+
+interface AskRow {
+  id: string
+  event_id: string
+  hook: string
+  question: string
+  base_url: string
+  /** JSON array of MessageAction; always read and written whole. */
+  actions: string
+  answer: string | null
+  answer_data: string | null
+  answered_at: number | null
+  created_at: number
+  expires_at: number
 }
 
 interface DeliveryRow {
@@ -289,6 +326,66 @@ class SqliteStore extends Service implements StoreService {
     return rows.map((row) => row.channel)
   }
 
+  async saveAsk(ask: StoredAsk): Promise<void> {
+    this.db
+      .prepare(
+        `INSERT INTO asks (id, event_id, hook, question, base_url, actions, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        ask.id,
+        ask.eventId,
+        ask.hook,
+        ask.question,
+        ask.baseUrl,
+        JSON.stringify(ask.actions),
+        ask.createdAt,
+        ask.expiresAt,
+      )
+  }
+
+  async getAsk(id: string): Promise<StoredAsk | undefined> {
+    const row = this.db.prepare('SELECT * FROM asks WHERE id = ?').get(id) as unknown as
+      | AskRow
+      | undefined
+    return row ? askOf(row) : undefined
+  }
+
+  async askForEvent(eventId: string): Promise<StoredAsk | undefined> {
+    const row = this.db
+      .prepare('SELECT * FROM asks WHERE event_id = ? ORDER BY created_at DESC LIMIT 1')
+      .get(eventId) as unknown as AskRow | undefined
+    return row ? askOf(row) : undefined
+  }
+
+  /**
+   * First answer wins, and one statement decides it: the `WHERE` is the lock. A
+   * second click therefore reads the row again to say what it already holds
+   * instead of overwriting it.
+   */
+  async answerAsk(id: string, answer: AskAnswer): Promise<{ verdict: AnswerVerdict; ask?: StoredAsk }> {
+    const result = this.db
+      .prepare(
+        `UPDATE asks SET answer = ?, answer_data = ?, answered_at = ?
+         WHERE id = ? AND answered_at IS NULL AND expires_at > ?`,
+      )
+      .run(
+        answer.action,
+        answer.data === undefined ? null : JSON.stringify(answer.data),
+        answer.at,
+        id,
+        answer.at,
+      )
+    const ask = await this.getAsk(id)
+    if (Number(result.changes) === 1) return { verdict: 'answered', ask }
+    if (!ask) return { verdict: 'unknown' }
+    return { verdict: ask.answered ? 'already' : 'expired', ask }
+  }
+
+  async pruneAsks(before: number): Promise<number> {
+    return Number(this.db.prepare('DELETE FROM asks WHERE expires_at < ?').run(before).changes)
+  }
+
   async listHooks(): Promise<HookDefinition[]> {
     const rows = this.db
       .prepare('SELECT * FROM hooks ORDER BY name')
@@ -438,6 +535,28 @@ class SqliteStore extends Service implements StoreService {
   }
 }
 
+/** One ask row as the rest of the application reads it. */
+function askOf(row: AskRow): StoredAsk {
+  return {
+    id: row.id,
+    eventId: row.event_id,
+    hook: row.hook,
+    question: row.question,
+    baseUrl: row.base_url,
+    actions: JSON.parse(row.actions) as MessageAction[],
+    answered:
+      row.answered_at === null
+        ? null
+        : {
+            action: row.answer,
+            at: row.answered_at,
+            ...(row.answer_data === null ? {} : { data: JSON.parse(row.answer_data) as unknown }),
+          },
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+  }
+}
+
 export function apply(ctx: Context, config: Config): void {
   const store = new SqliteStore(ctx, config)
   store.register()
@@ -445,6 +564,11 @@ export function apply(ctx: Context, config: Config): void {
     const cutoff = Date.now() - config.retentionDays * 86_400_000
     void store.prune(cutoff).then((removed) => {
       if (removed > 0) ctx.logger('store').info(`pruned ${removed} settled event(s)`)
+    })
+    // An expired ask is a link nobody can use any more, so it goes on the same
+    // schedule as a settled event and not on one of its own.
+    void store.pruneAsks(cutoff).then((removed) => {
+      if (removed > 0) ctx.logger('store').info(`pruned ${removed} expired ask(s)`)
     })
   }
 }

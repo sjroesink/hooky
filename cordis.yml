@@ -48,6 +48,16 @@
         description: Worth knowing, not worth a push on two devices.
         targets:
           - channel: telegram
+- id: ask
+  name: ./src/plugins/ask.ts
+  config:
+    # A reply link is opened by a person, and the agent that asks the question may
+    # well reach this instance on 127.0.0.1. Empty derives the base from the
+    # request, which is right behind a reverse proxy and wrong on localhost.
+    publicUrl: !!js process.env.HOOKY_PUBLIC_URL ?? ''
+    # How long a call with actions in it holds its answer when the payload does
+    # not say. `wait` in the payload overrides it, up to maxWaitMs.
+    waitMs: 60000
 - id: api
   name: ./src/plugins/api.ts
   config:

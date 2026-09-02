@@ -1,4 +1,5 @@
 import { Service, type Context } from '@deepseek-ai/cordis'
+import { appendActions } from './ask.ts'
 import { shape } from './render.ts'
 import type { HookTarget } from './routes.ts'
 import {
@@ -117,9 +118,10 @@ export class NotifyService extends Service {
     channel: Channel,
     settings?: Record<string, string>,
   ): Promise<DeliveryResult> {
+    const shown = withActions(message, channel)
     try {
-      return await this.ctx.waterfall('notify/deliver', message, channel.name, () =>
-        this.send(message, channel, settings),
+      return await this.ctx.waterfall('notify/deliver', shown, channel.name, () =>
+        this.send(shown, channel, settings),
       )
     } catch (error) {
       // A listener threw instead of returning a result.
@@ -179,6 +181,18 @@ export class NotifyService extends Service {
       release?.()
     }
   }
+}
+
+/**
+ * The actions as this channel shows them. One that renders them itself keeps the
+ * body the caller wrote; every other one gets them as lines under it. This runs
+ * after `shape()`, so a target with a body template of its own cannot drop the
+ * only way to answer, and before the waterfall, so a rate limit or a dedupe sees
+ * the body that really goes out.
+ */
+function withActions(message: Message, channel: Channel): Message {
+  if (!message.actions?.length || channel.actions) return message
+  return { ...message, body: appendActions(message.body, message.actions) }
 }
 
 export default NotifyService

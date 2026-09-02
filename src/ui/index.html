@@ -270,6 +270,12 @@
   }
   .delivery.is-failed .note { color: var(--failed); border-color: var(--failed); }
   .delivery.is-skipped .note { background: var(--panel2); border-color: var(--line); color: var(--fg2); }
+  /* The question a call asked. Same frame as the deliveries, so the two blocks
+     under each other read as one list of facts about this call. */
+  .delivery.is-answered .dot { background: var(--sent); }
+  .delivery.is-answered .tries { color: var(--sent); }
+  .delivery .link-out { margin-left: auto; color: var(--fg3); overflow: hidden;
+                        text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
   .status-sent { color: var(--sent); }
   .status-failed { color: var(--failed); }
   .status-skipped { color: var(--fg3); }
@@ -961,6 +967,7 @@ function renderDetail() {
         <dt>url</dt><dd>${event.url ? `<a href="${esc(event.url)}" rel="noreferrer noopener">${esc(event.url)}</a>` : '<span style="color:var(--fg3)">null</span>'}</dd>
         <dt>replayOf</dt><dd>${event.replayOf ? `<button type="button" class="link" data-open="${esc(event.replayOf)}" style="font-size:var(--f3)">${esc(event.replayOf)}</button>` : '<span style="color:var(--fg3)">null</span>'}</dd>
       </dl>
+      ${askBlock(event.ask)}
       <div>
         <div class="caption">DELIVERIES · ${event.deliveries.length}</div>
         ${
@@ -983,6 +990,57 @@ function renderDetail() {
         </div>
         <pre id="payload" data-wrap="${state.wrap}">${esc(payload)}</pre>
       </div>
+    </div>`
+}
+
+/**
+ * The question this call asked, if it asked one. The urls are printed and not
+ * clickable: opening one from here would answer a question you were reading.
+ */
+function askBlock(ask) {
+  if (!ask) return ''
+  const answered = ask.answered
+  const open = !answered && ask.expiresAt > Date.now()
+  const state = answered ? 'answered' : open ? 'open' : 'expired'
+  const waiting = open ? `open until ${fmtClock(ask.expiresAt)}` : 'expired'
+
+  const row = (title, url, note, mine) => `
+    <div class="delivery${mine ? ' is-answered' : ''}">
+      <div class="delivery-line">
+        <span class="dot"></span>
+        <span class="name">${esc(title)}</span>
+        <span class="tries">${esc(note)}</span>
+      </div>
+      <div class="note">${esc(url)}</div>
+    </div>`
+
+  const rows = ask.actions.map((action) => {
+    const mine = answered && answered.action === action.value
+    const note = mine
+      ? fmt(answered.at)
+      : !action.reply
+        ? 'a link, not an answer'
+        : answered
+          ? 'not answered'
+          : waiting
+    return row(action.title, action.url, note, mine)
+  })
+  // A question that offered no answers is answered by whatever was posted to
+  // its one reply url, so that url is the row.
+  if (ask.actions.every((action) => !action.reply)) {
+    const mine = answered && answered.action === null
+    rows.push(row('any answer', ask.replyUrl, mine ? fmt(answered.at) : answered ? 'not answered' : waiting, mine))
+  }
+
+  const data =
+    answered && answered.data !== undefined && answered.data !== null
+      ? `<pre data-wrap="true" style="margin-top:8px">${esc(JSON.stringify(answered.data, null, 2))}</pre>`
+      : ''
+  return `
+    <div>
+      <div class="caption">QUESTION · ${esc(state)}</div>
+      <div class="deliveries">${rows.join('')}</div>
+      ${data}
     </div>`
 }
 

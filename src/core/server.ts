@@ -38,8 +38,14 @@ const HOSTISH = /^[A-Za-z0-9.:[\]_-]+$/
  * The instance as the caller reached it, so a document can print urls that can
  * be pasted straight into a shell, behind a reverse proxy as well. A header that
  * is not host-shaped falls back to the address actually bound.
+ *
+ * It takes the headers and not a whole request, because a hook call carries them
+ * on a `RawHook` and needs the same answer.
  */
-export function originOf(request: RouteRequest, bound: { host: string; port: number }): string {
+export function originOf(
+  request: { headers: Record<string, string> },
+  bound: { host: string; port: number },
+): string {
   const host = firstValue(request.headers['x-forwarded-host']) || firstValue(request.headers['host'])
   const scheme = firstValue(request.headers['x-forwarded-proto']) === 'https' ? 'https' : 'http'
   if (!HOSTISH.test(host)) return `${scheme}://${bound.host}:${bound.port}`

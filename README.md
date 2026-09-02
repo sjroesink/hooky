@@ -115,6 +115,100 @@ is `const base = await next(); return { ...base, body: { ...base.body, ticket } 
 with a shape some caller insists on is the same four lines. Only the accepted path comes past it: a
 refused call answers through `HookRejected` and never reaches the seam.
 
+## Asking a question
+
+A call with an `ask` in it is a question. Hooky gives that question one reply url, sends it out with the
+message, and holds the answer to the call until somebody replies:
+
+```
+POST /hooks/sander
+{ "title": "Deploy 4471 to prod?", "message": "12 commits, tests green",
+  "ask": { "actions": [ { "title": "yes" }, { "title": "no" } ], "wait": 120 } }
+
+200
+{ "id": "34ef85…", "hook": "sander", "queued": false, "state": "done", "outcome": "delivered",
+  "results": [ { "channel": "telegram", "status": "sent", "attempts": 1 } ],
+  "ask": {
+    "id": "8f2aQ1xK…",
+    "replyUrl": "https://hooky.example.com/ask/reply/8f2aQ1xK…",
+    "statusUrl": "https://hooky.example.com/ask/8f2aQ1xK…",
+    "expiresAt": 1788251712000,
+    "actions": [
+      { "value": "yes", "title": "yes", "url": "https://…/ask/reply/8f2aQ1xK…/yes", "reply": true },
+      { "value": "no",  "title": "no",  "url": "https://…/ask/reply/8f2aQ1xK…/no",  "reply": true }
+    ],
+    "answered": { "action": "yes", "at": 1788251650123 }
+  } }
+```
+
+So an agent asks and hears the answer in one call. The rest of the pipeline knows nothing about it:
+this is a hook call, so the secret, the targets, the mapping, the history and the retries all behave as
+they do for anything else.
+
+**One url answers a question, and the caller decides what an answer is.**
+
+| What you ask with | What answers it |
+|---|---|
+| `ask.actions` | A reply url per answer, `replyUrl/<value>`. That is what a person taps, and `answered.action` is the value they picked. Hooky renders them as lines under the body, so a channel shows them without knowing what a question is. |
+| `ask: true`, or an ask with no actions | Nothing is rendered. Post anything to `replyUrl` and that body is the answer, in `answered.data`. |
+| both | An answer url takes a body as well, so "yes, but" comes back with a note attached to it. |
+
+An answer with a `url` of its own is a plain link that answers nothing. It rides along in the message
+to be tapped, which is how "open the form" sits next to "not now".
+
+**Opening an answer url shows a page with one button.** That is not politeness. Telegram fetches the
+urls in a message to build a link preview, so a link that answers on the GET is clicked by that crawler
+before you ever see it. The button posts, and nothing prefetches a POST. `confirm: false` turns the page
+off if you know better for your own channels.
+
+First answer wins, and one `UPDATE ... WHERE answered_at IS NULL` decides it, so a second reply reads
+"already answered yes" instead of overwriting anything. A question lasts `keepMs`, an hour by default,
+and after that its urls say it expired. An ask is a row in SQLite, so the links already in your chat
+survive a restart.
+
+`ask.wait` is in seconds and is capped by `maxWaitMs`, five minutes by default. Running out loses
+nothing: the answer comes back with `answered: null`, the question stays open, and
+`GET /ask/<id>?wait=60` picks the waiting up where the call left it. `wait: 0` answers at once. A
+question nobody received is never waited for at all: if no channel took it and the queue owes nothing,
+the `results` say why and the call comes straight back.
+
+### A form as the answer
+
+Hooky does not look inside a reply body, which is the whole of the form support: whoever asks builds
+the page, the page posts the fields to the reply url, and the caller gets them back as `answered.data`.
+
+That page has to know the reply url before the question goes out, so a caller may bring its own id:
+
+```
+POST /hooks/sander
+{ "title": "Five questions about the sprint",
+  "url": "https://example.com/the-form",
+  "ask": { "id": "b7f2c1de-4a33-4c07-9f11-2b8e5d6a1c90", "wait": 600 } }
+```
+
+The reply url is then `https://hooky.example.com/ask/reply/b7f2c1de-…`, which the page can hold before
+Hooky has ever heard of the question. No actions, so nothing is rendered and the reader taps the form in
+`url` instead. The page finishes with:
+
+```js
+await fetch('https://hooky.example.com/ask/reply/b7f2c1de-…', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', accept: 'application/json' },
+  body: JSON.stringify(answers),
+})
+```
+
+`ask.id` is 16 to 64 characters of `[A-Za-z0-9._-]` and it has to be random, because it is the only
+thing keeping the question private. Reusing one is a `400` and not a silent overwrite.
+
+A plain form post works as well as a `fetch`: `application/x-www-form-urlencoded` becomes an object with
+one key per field, and a repeated field becomes a list. The `accept` header decides what comes back, the
+page or the JSON, so a `<form method="post">` lands on "passed on" with no script at all.
+
+The ask routes answer `access-control-allow-origin: *`, so that page can live anywhere, an artifact on
+someone else's domain included. Closing that would protect nothing: the reply url is the capability, and
+a plain form post never asked CORS for permission.
+
 ## Durability
 
 The outbox plugin owns persistence. It takes ownership of `hook/submit` by returning without calling
@@ -361,7 +455,7 @@ does nothing on every boot after that.
 | `ctx.hooks` | `hooks.ts` | `submit(event)`, `dispatch(event, options)` |
 | `ctx.notify` | `hooks.ts` | `register(channel)`, `names`, `settings`, `deliver(message, skip)`, `deliverTo(message, target)` |
 | `ctx.routes` | `hook-routes.ts` | `list`, `get`, `create`, `setTarget`, `rotate`, `preview`, `run`, `targetsFor` |
-| `ctx.store` | `store-sqlite.ts` | `append`, `get`, `list`, `due`, `recordAttempt`, `stats`, `prune`, `listHooks`, `saveHook` |
+| `ctx.store` | `store-sqlite.ts` | `append`, `get`, `list`, `due`, `recordAttempt`, `stats`, `prune`, `listHooks`, `saveHook`, `saveAsk`, `answerAsk` |
 | `ctx.timer` | `@deepseek-ai/cordis-plugin-timer` | `ctx.timeout`, `ctx.interval` as effects |
 
 Every interface lives in `src/core`, every implementation in `src/plugins`. A plugin imports types from

@@ -133,7 +133,13 @@ export function apply(ctx: Context, config: Config): void {
   route('GET', '/events/:id', async (request) => {
     const found = await ctx.store.get(request.params['id']!)
     if (!found) return { status: 404, body: { error: 'no such event' } }
-    return { status: 200, body: { ...view(found), payload: found.event.payload } }
+    // The question this call asked, if it asked one. Only here and not in the
+    // list, so reading history stays one query per page.
+    const ask = await ctx.store.askForEvent(found.event.id)
+    return {
+      status: 200,
+      body: { ...view(found), payload: found.event.payload, ...(ask ? { ask } : {}) },
+    }
   })
 
   route('POST', '/events/:id/replay', async (request) => {
@@ -561,7 +567,11 @@ function describeApi(base: string) {
         query: ['hook', 'level', 'state', 'outcome', 'channel', 'search', 'since', 'limit', 'offset'],
         use: 'webhook calls, newest first',
       },
-      { method: 'GET', path: `${base}/events/:id`, use: 'one call including its payload' },
+      {
+        method: 'GET',
+        path: `${base}/events/:id`,
+        use: 'one call including its payload, and the question it asked with what was answered',
+      },
       {
         method: 'POST',
         path: `${base}/events/:id/replay`,
